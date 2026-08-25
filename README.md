@@ -96,3 +96,9 @@ dell'algoritmo, da sostituire con quella del ruolo A quando e' pronta.
 php test/test_router.php          # 10 casi di routing
 php test/test_ripartizione.php    # ripartizione su 4 scenari
 ```
+
+## Autori
+
+- Yonas Habtetsadik Burka
+- Abdelhamid Limem
+- Ali Taher
