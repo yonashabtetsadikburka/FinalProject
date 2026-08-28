@@ -1,240 +1,266 @@
--- =====================================================================
---  BuyPool - schema MySQL
---  Modello: si compra a SCATOLE, si distribuisce a LATTE.
---  La latta e' la confezione sigillata: non viene mai aperta.
--- =====================================================================
+-- ============================================================
+-- SCHEMA DATABASE — Applicazione di Collette (Acquisto di Gruppo)
+-- Versione con tabella utenti unificata (ruolo: cliente/fornitore/admin)
+-- ============================================================
 
-SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0;
+CREATE DATABASE IF NOT EXISTS collette_acquisto_gruppo
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE collette_acquisto_gruppo;
 
-DROP TABLE IF EXISTS voti_proposta, proposte, log_eventi, assegnazioni,
-                     partecipazioni, campagne, punti_ritiro,
-                     scaglioni_prezzo, prodotti, fornitori, utenti;
-
-SET FOREIGN_KEY_CHECKS = 1;
-
--- ---------------------------------------------------------------- utenti
+-- ------------------------------------------------------------
+-- 1. UTENTI — Tabella unica per TUTTI gli account della
+--    piattaforma (clienti, fornitori, admin). Il campo "ruolo"
+--    determina il tipo di account; i dati specifici di
+--    fornitore/admin sono nelle rispettive tabelle di dettaglio
+-- ------------------------------------------------------------
 CREATE TABLE utenti (
-  id             INT AUTO_INCREMENT PRIMARY KEY,
-  nome           VARCHAR(80)  NOT NULL,
-  email          VARCHAR(120) NOT NULL UNIQUE,
-  password_hash  VARCHAR(255) NOT NULL,
-  telefono       VARCHAR(20)  NULL,
-  ruolo          ENUM('utente','admin') NOT NULL DEFAULT 'utente',
-  created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id_utente           INT AUTO_INCREMENT PRIMARY KEY,
+    cognome             VARCHAR(100) NOT NULL,
+    nome                VARCHAR(100) NOT NULL,
+    email               VARCHAR(150) NOT NULL UNIQUE,
+    password            VARCHAR(255) NOT NULL,
+    telefono            VARCHAR(20),
+    indirizzo           VARCHAR(255),
+    ruolo               ENUM('cliente','fornitore','admin') NOT NULL DEFAULT 'cliente',
+    stripe_customer_id  VARCHAR(100) UNIQUE,           -- usato solo per ruolo = cliente
+    data_iscrizione     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    stato               ENUM('attivo','sospeso') DEFAULT 'attivo'
+) ENGINE=InnoDB;
 
--- ------------------------------------------------------------ fornitori
-CREATE TABLE fornitori (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  nome         VARCHAR(120) NOT NULL,
-  comune       VARCHAR(80)  NOT NULL,
-  descrizione  TEXT         NULL,
-  attivo       TINYINT(1)   NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ------------------------------------------------------------
+-- 2. FORNITORI_DETTAGLI — Dati specifici dei fornitori (1:1 con
+--    utenti quando ruolo = 'fornitore'); separati perché non si
+--    applicano a clienti/admin. Elenco pubblico per trasparenza
+-- ------------------------------------------------------------
+CREATE TABLE fornitori_dettagli (
+    id_utente           INT PRIMARY KEY,
+    nome_azienda        VARCHAR(150) NOT NULL,
+    descrizione         TEXT,
+    logo_url            VARCHAR(255),
+    partner_pubblico    BOOLEAN DEFAULT TRUE,
+    data_partnership    DATETIME DEFAULT CURRENT_TIMESTAMP,
 
--- ------------------------------------------------------------- prodotti
--- confezione        = litri (o kg) contenuti in UNA latta -> mai aperta
--- latte_per_scatola = quante latte in una scatola -> unita' di ACQUISTO
--- lotto_minimo      = numero minimo di SCATOLE per ordine
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 3. AMMINISTRATORI_DETTAGLI — Livello di permesso specifico
+--    degli admin (1:1 con utenti quando ruolo = 'admin')
+-- ------------------------------------------------------------
+CREATE TABLE amministratori_dettagli (
+    id_utente           INT PRIMARY KEY,
+    livello_permesso    ENUM('super_admin','gestore_colletta','gestore_consegna') DEFAULT 'gestore_colletta',
+
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 4. SEDI — Uffici fisici dell'agenzia per il ritiro
+-- ------------------------------------------------------------
+CREATE TABLE sedi (
+    id_sede             INT AUTO_INCREMENT PRIMARY KEY,
+    nome                VARCHAR(100) NOT NULL,
+    indirizzo           VARCHAR(255) NOT NULL,
+    citta               VARCHAR(100) NOT NULL,
+    telefono            VARCHAR(20),
+    orari               VARCHAR(255)
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 5. PROPOSTE_PRODOTTI — Prodotti suggeriti dai clienti;
+--    id_utente deve avere ruolo = 'cliente', id_fornitore_suggerito
+--    e id_admin_gestione puntano anch'essi a utenti, con il ruolo
+--    corrispondente (controllo da fare a livello applicativo,
+--    l'SQL puro non impone il ruolo su una FK)
+-- ------------------------------------------------------------
+CREATE TABLE proposte_prodotti (
+    id_proposta         INT AUTO_INCREMENT PRIMARY KEY,
+    id_utente           INT NOT NULL,
+    nome_prodotto       VARCHAR(200) NOT NULL,
+    descrizione         TEXT,
+    image_url           VARCHAR(255),
+    id_fornitore_suggerito INT NULL,
+    stato               ENUM('in_attesa','approvata_admin','rifiutata','in_votazione','pubblicata','respinta_votazione')
+                             DEFAULT 'in_attesa',
+    id_admin_gestione   INT NULL,
+    data_proposta       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_gestione       DATETIME NULL,
+
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE,
+    FOREIGN KEY (id_fornitore_suggerito) REFERENCES utenti(id_utente) ON DELETE SET NULL,
+    FOREIGN KEY (id_admin_gestione) REFERENCES utenti(id_utente) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 6. VOTI_PROPOSTE — Voti dei clienti sulle proposte approvate
+-- ------------------------------------------------------------
+CREATE TABLE voti_proposte (
+    id_voto             INT AUTO_INCREMENT PRIMARY KEY,
+    id_proposta         INT NOT NULL,
+    id_utente           INT NOT NULL,
+    valore_voto         ENUM('favore','contrario') NOT NULL,
+    data_voto           DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_proposta) REFERENCES proposte_prodotti(id_proposta) ON DELETE CASCADE,
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE,
+    UNIQUE KEY uniq_voto_per_utente (id_proposta, id_utente)
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 7. PRODOTTI — Catalogo ufficiale; id_fornitore punta a un
+--    utente con ruolo = 'fornitore'
+-- ------------------------------------------------------------
 CREATE TABLE prodotti (
-  id                 INT AUTO_INCREMENT PRIMARY KEY,
-  fornitore_id       INT NOT NULL,
-  nome               VARCHAR(120) NOT NULL,
-  unita              ENUM('litro','kg','pezzo') NOT NULL DEFAULT 'litro',
-  confezione         DECIMAL(8,2) NOT NULL,
-  latte_per_scatola  INT          NOT NULL,
-  lotto_minimo       INT          NOT NULL DEFAULT 1,
-  prezzo_scatola     DECIMAL(8,2) NOT NULL,
-  CONSTRAINT fk_prod_forn FOREIGN KEY (fornitore_id)
-    REFERENCES fornitori(id) ON DELETE RESTRICT,
-  CONSTRAINT ck_prod_pos CHECK (confezione > 0
-                                AND latte_per_scatola > 0
-                                AND lotto_minimo > 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id_prodotto         INT AUTO_INCREMENT PRIMARY KEY,
+    id_fornitore        INT NOT NULL,
+    id_proposta_origine INT NULL,
+    nome                VARCHAR(200) NOT NULL,
+    descrizione         TEXT,
+    image_url           VARCHAR(255),
+    prezzo_unitario     DECIMAL(10,2) NOT NULL,
+    quantita_minima     INT NOT NULL,
+    stato               ENUM('attivo','archiviato') DEFAULT 'attivo',
+    data_creazione      DATETIME DEFAULT CURRENT_TIMESTAMP,
 
--- ------------------------------------------- scaglioni_prezzo (FR9, opz.)
-CREATE TABLE scaglioni_prezzo (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  prodotto_id     INT NOT NULL,
-  scatole_da      INT NOT NULL,
-  prezzo_scatola  DECIMAL(8,2) NOT NULL,
-  UNIQUE KEY uq_scaglione (prodotto_id, scatole_da),
-  CONSTRAINT fk_scag_prod FOREIGN KEY (prodotto_id)
-    REFERENCES prodotti(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    FOREIGN KEY (id_fornitore) REFERENCES utenti(id_utente) ON DELETE CASCADE,
+    FOREIGN KEY (id_proposta_origine) REFERENCES proposte_prodotti(id_proposta) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
--- --------------------------------------------------------- punti_ritiro
-CREATE TABLE punti_ritiro (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  nome            VARCHAR(120) NOT NULL,
-  indirizzo       VARCHAR(200) NOT NULL,
-  comune          VARCHAR(80)  NOT NULL,
-  finestra_ritiro VARCHAR(120) NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ------------------------------------------------------------
+-- 8. COLLETTE — Campagna di acquisto di gruppo per un prodotto
+-- ------------------------------------------------------------
+CREATE TABLE collette (
+    id_colletta         INT AUTO_INCREMENT PRIMARY KEY,
+    id_prodotto         INT NOT NULL,
+    quantita_minima     INT NOT NULL,
+    quantita_attuale    INT DEFAULT 0,
+    data_inizio         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_limite         DATETIME NOT NULL,
+    stato               ENUM('in_corso','riuscita','fallita','ordine_fornitore','consegnata','annullata')
+                             DEFAULT 'in_corso',
+    data_agg_stato      DATETIME NULL,
 
--- ------------------------------------------------------------- campagne
--- soglia_scatole viene COPIATA da prodotti.lotto_minimo all'apertura,
--- cosi' modificare il prodotto non riscrive la storia delle campagne.
-CREATE TABLE campagne (
-  id                  INT AUTO_INCREMENT PRIMARY KEY,
-  prodotto_id         INT NOT NULL,
-  aperta_da           INT NOT NULL,
-  referente_id        INT NULL,
-  punto_ritiro_id     INT NULL,
-  soglia_scatole      INT NOT NULL,
-  scadenza            DATETIME NOT NULL,
-  stato               ENUM('aperta','soglia_raggiunta','ripartita','decaduta')
-                      NOT NULL DEFAULT 'aperta',
-  regola_arrotondamento ENUM('difetto','eccesso') NOT NULL DEFAULT 'difetto',
-  created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_camp_prod FOREIGN KEY (prodotto_id)
-    REFERENCES prodotti(id)     ON DELETE RESTRICT,
-  CONSTRAINT fk_camp_aperta FOREIGN KEY (aperta_da)
-    REFERENCES utenti(id)       ON DELETE RESTRICT,
-  CONSTRAINT fk_camp_refer FOREIGN KEY (referente_id)
-    REFERENCES utenti(id)       ON DELETE SET NULL,
-  CONSTRAINT fk_camp_punto FOREIGN KEY (punto_ritiro_id)
-    REFERENCES punti_ritiro(id) ON DELETE SET NULL,
-  INDEX idx_camp_stato (stato, scadenza)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    FOREIGN KEY (id_prodotto) REFERENCES prodotti(id_prodotto) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- -------------------------------------------------------- partecipazioni
--- created_at e' lo SPAREGGIO dell'algoritmo di ripartizione: non toglierlo.
-CREATE TABLE partecipazioni (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  campagna_id     INT NOT NULL,
-  utente_id       INT NOT NULL,
-  latte_richieste INT NOT NULL,
-  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_partecipazione (campagna_id, utente_id),
-  CONSTRAINT fk_part_camp FOREIGN KEY (campagna_id)
-    REFERENCES campagne(id) ON DELETE CASCADE,
-  CONSTRAINT fk_part_utente FOREIGN KEY (utente_id)
-    REFERENCES utenti(id)   ON DELETE CASCADE,
-  CONSTRAINT ck_part_pos CHECK (latte_richieste > 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ------------------------------------------------------------
+-- 9. PRENOTAZIONI — Partecipazione di un cliente a una colletta
+-- ------------------------------------------------------------
+CREATE TABLE prenotazioni (
+    id_prenotazione     INT AUTO_INCREMENT PRIMARY KEY,
+    id_colletta         INT NOT NULL,
+    id_utente           INT NOT NULL,
+    quantita            INT NOT NULL DEFAULT 1,
+    importo_acconto     DECIMAL(10,2) NOT NULL,
+    importo_saldo       DECIMAL(10,2) NULL,
+    stato               ENUM('prenotata','confermata','annullata','rimborsata') DEFAULT 'prenotata',
+    data_prenotazione   DATETIME DEFAULT CURRENT_TIMESTAMP,
 
--- ---------------------------------------------------------- assegnazioni
--- Scritta UNA SOLA VOLTA alla ripartizione. Mai aggiornata:
--- una correzione e' una riga nuova, cosi' la storia resta difendibile.
-CREATE TABLE assegnazioni (
-  id               INT AUTO_INCREMENT PRIMARY KEY,
-  campagna_id      INT NOT NULL,
-  utente_id        INT NOT NULL,
-  latte_assegnate  INT NOT NULL,
-  quantita_totale  DECIMAL(8,2) NOT NULL,
-  importo          DECIMAL(8,2) NOT NULL,
-  token_ritiro     VARCHAR(64)  NOT NULL UNIQUE,
-  ritirato_il      DATETIME     NULL,
-  confermato_da    INT          NULL,
-  created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_ass_camp FOREIGN KEY (campagna_id)
-    REFERENCES campagne(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ass_utente FOREIGN KEY (utente_id)
-    REFERENCES utenti(id)   ON DELETE RESTRICT,
-  CONSTRAINT fk_ass_conf FOREIGN KEY (confermato_da)
-    REFERENCES utenti(id)   ON DELETE SET NULL,
-  INDEX idx_ass_ritiro (campagna_id, ritirato_il)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    FOREIGN KEY (id_colletta) REFERENCES collette(id_colletta) ON DELETE CASCADE,
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- ------------------------------------------------------------ log_eventi
-CREATE TABLE log_eventi (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  campagna_id  INT NOT NULL,
-  stato_da     VARCHAR(20)  NULL,
-  stato_a      VARCHAR(20)  NOT NULL,
-  motivo       VARCHAR(200) NULL,
-  eseguito_da  INT          NULL,
-  eseguito_il  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_log_camp FOREIGN KEY (campagna_id)
-    REFERENCES campagne(id) ON DELETE CASCADE,
-  CONSTRAINT fk_log_utente FOREIGN KEY (eseguito_da)
-    REFERENCES utenti(id)   ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ------------------------------------------------------------
+-- 10. PAGAMENTI — Transazioni collegate a Stripe
+-- ------------------------------------------------------------
+CREATE TABLE pagamenti (
+    id_pagamento            INT AUTO_INCREMENT PRIMARY KEY,
+    id_prenotazione         INT NOT NULL,
+    tipo_pagamento          ENUM('acconto','saldo','consegna') NOT NULL,
+    importo                 DECIMAL(10,2) NOT NULL,
+    valuta                  CHAR(3) DEFAULT 'EUR',
+    commissione_agenzia     DECIMAL(10,2) DEFAULT 0.00,
 
--- ------------------------------------------------ wishlist (FR11, opz.)
-CREATE TABLE proposte (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  utente_id   INT NOT NULL,
-  titolo      VARCHAR(120) NOT NULL,
-  descrizione TEXT NULL,
-  stato       ENUM('aperta','validata','respinta') NOT NULL DEFAULT 'aperta',
-  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_prop_utente FOREIGN KEY (utente_id)
-    REFERENCES utenti(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    stripe_payment_intent_id VARCHAR(100) UNIQUE,
+    stripe_charge_id        VARCHAR(100),
+    stripe_payment_method   VARCHAR(50),
+    stato_stripe            VARCHAR(50),
 
-CREATE TABLE voti_proposta (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  proposta_id INT NOT NULL,
-  utente_id   INT NOT NULL,
-  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_voto (proposta_id, utente_id),
-  CONSTRAINT fk_voto_prop FOREIGN KEY (proposta_id)
-    REFERENCES proposte(id) ON DELETE CASCADE,
-  CONSTRAINT fk_voto_utente FOREIGN KEY (utente_id)
-    REFERENCES utenti(id)   ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    stato                   ENUM('in_attesa','confermato','fallito','rimborsato') DEFAULT 'in_attesa',
+    data_pagamento          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_conferma           DATETIME NULL,
 
--- =====================================================================
---  DATI DI ESEMPIO
--- =====================================================================
+    FOREIGN KEY (id_prenotazione) REFERENCES prenotazioni(id_prenotazione) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-INSERT INTO utenti (nome, email, password_hash, ruolo) VALUES
-  ('Admin',  'admin@buypool.test',  '$2y$10$PLACEHOLDER', 'admin'),
-  ('Ali',    'ali@buypool.test',    '$2y$10$PLACEHOLDER', 'utente'),
-  ('Marco',  'marco@buypool.test',  '$2y$10$PLACEHOLDER', 'utente'),
-  ('Giulia', 'giulia@buypool.test', '$2y$10$PLACEHOLDER', 'utente'),
-  ('Sara',   'sara@buypool.test',   '$2y$10$PLACEHOLDER', 'utente');
+-- ------------------------------------------------------------
+-- 11. EVENTI_STRIPE — Registro webhook Stripe (idempotenza/audit)
+-- ------------------------------------------------------------
+CREATE TABLE eventi_stripe (
+    id_evento           INT AUTO_INCREMENT PRIMARY KEY,
+    stripe_event_id     VARCHAR(100) NOT NULL UNIQUE,
+    tipo_evento         VARCHAR(100) NOT NULL,
+    id_pagamento        INT NULL,
+    payload_json        JSON NULL,
+    elaborato           BOOLEAN DEFAULT FALSE,
+    data_ricezione      DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-INSERT INTO fornitori (nome, comune, descrizione) VALUES
-  ('Frantoio della Valnerina', 'Terni',       'Olio extravergine di oliva'),
-  ('Azienda Agricola Colle',   'Narni',       'Legumi e farro'),
-  ('Cantina di Amelia',        'Amelia',      'Vino sfuso e imbottigliato');
+    FOREIGN KEY (id_pagamento) REFERENCES pagamenti(id_pagamento) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
--- olio: latta da 5 L, scatola da 4 latte (20 L), minimo 2 scatole (40 L)
-INSERT INTO prodotti
-  (fornitore_id, nome, unita, confezione, latte_per_scatola, lotto_minimo, prezzo_scatola)
-VALUES
-  (1, 'Olio EVO Valnerina',   'litro', 5.00, 4, 2, 180.00),
-  (2, 'Farro perlato',        'kg',    5.00, 4, 1,  42.00),
-  (2, 'Lenticchie',           'kg',    1.00, 12, 1, 66.00);
+-- ------------------------------------------------------------
+-- 12. CONSEGNE — Ritiro in sede o consegna a domicilio
+-- ------------------------------------------------------------
+CREATE TABLE consegne (
+    id_consegna         INT AUTO_INCREMENT PRIMARY KEY,
+    id_prenotazione     INT NOT NULL UNIQUE,
+    modalita            ENUM('ritiro_sede','consegna_domicilio') NOT NULL,
+    id_sede             INT NULL,
+    indirizzo_consegna  VARCHAR(255) NULL,
+    importo_consegna    DECIMAL(10,2) DEFAULT 0.00,
+    stato               ENUM('in_attesa','pronta','spedita','consegnata','ritirata') DEFAULT 'in_attesa',
+    data_prevista       DATETIME NULL,
+    data_effettiva      DATETIME NULL,
 
-INSERT INTO punti_ritiro (nome, indirizzo, comune, finestra_ritiro) VALUES
-  ('Frantoio - ritiro in sede', 'Str. della Valnerina 1', 'Terni', 'Sab 09:00-12:00'),
-  ('Casa referente',            'Via Roma 10',            'Terni', 'Da concordare');
+    FOREIGN KEY (id_prenotazione) REFERENCES prenotazioni(id_prenotazione) ON DELETE CASCADE,
+    FOREIGN KEY (id_sede) REFERENCES sedi(id_sede) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
--- campagna aperta: soglia 2 scatole = 8 latte
-INSERT INTO campagne
-  (prodotto_id, aperta_da, referente_id, punto_ritiro_id, soglia_scatole,
-   scadenza, stato)
-VALUES
-  (1, 2, 2, 1, 2, DATE_ADD(NOW(), INTERVAL 10 DAY), 'aperta');
+-- ------------------------------------------------------------
+-- 13. ORDINI_FORNITORE — Trattativa e ordine di gruppo;
+--     id_admin punta a un utente con ruolo = 'admin'
+-- ------------------------------------------------------------
+CREATE TABLE ordini_fornitore (
+    id_ordine           INT AUTO_INCREMENT PRIMARY KEY,
+    id_colletta         INT NOT NULL UNIQUE,
+    id_admin            INT NULL,
+    quantita_ordinata   INT NOT NULL,
+    prezzo_negoziato    DECIMAL(10,2) NULL,
+    stato               ENUM('da_negoziare','confermato','in_transito','ricevuto') DEFAULT 'da_negoziare',
+    data_ordine         DATETIME NULL,
+    data_ricezione_agenzia DATETIME NULL,
 
--- 3 + 2 + 5 + 4 = 14 latte -> 3 scatole (12 latte), 2 in eccesso di domanda
-INSERT INTO partecipazioni (campagna_id, utente_id, latte_richieste) VALUES
-  (1, 2, 3), (1, 3, 2), (1, 4, 5), (1, 5, 4);
+    FOREIGN KEY (id_colletta) REFERENCES collette(id_colletta) ON DELETE CASCADE,
+    FOREIGN KEY (id_admin) REFERENCES utenti(id_utente) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
-INSERT INTO log_eventi (campagna_id, stato_a, motivo, eseguito_da) VALUES
-  (1, 'aperta', 'Campagna creata', 2);
+-- ------------------------------------------------------------
+-- 14. NOTIFICHE — Avvisi per gli eventi chiave del percorso utente
+-- ------------------------------------------------------------
+CREATE TABLE notifiche (
+    id_notifica         INT AUTO_INCREMENT PRIMARY KEY,
+    id_utente           INT NOT NULL,
+    tipo                ENUM('scaglione_raggiunto','scadenza_campagna','ordine_disponibile_ritiro',
+                              'ritiro_confermato','proposta_approvata') NOT NULL,
+    titolo              VARCHAR(150) NOT NULL,
+    messaggio           TEXT NOT NULL,
+    tipo_riferimento    ENUM('colletta','prenotazione','proposta') NULL,
+    id_riferimento      INT NULL,
+    letta               BOOLEAN DEFAULT FALSE,
+    data_creazione      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_lettura        DATETIME NULL,
 
--- =====================================================================
---  QUERY UTILI
--- =====================================================================
+    FOREIGN KEY (id_utente) REFERENCES utenti(id_utente) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Avanzamento di una campagna: scatole complete + quante latte
--- mancano per completare la prossima.
--- SELECT
---   c.id,
---   COALESCE(SUM(p.latte_richieste),0)                        AS latte_totali,
---   FLOOR(COALESCE(SUM(p.latte_richieste),0)/pr.latte_per_scatola) AS scatole_complete,
---   c.soglia_scatole,
---   (pr.latte_per_scatola
---     - MOD(COALESCE(SUM(p.latte_richieste),0), pr.latte_per_scatola))
---     % pr.latte_per_scatola                                  AS latte_per_prossima
--- FROM campagne c
--- JOIN prodotti pr        ON pr.id = c.prodotto_id
--- LEFT JOIN partecipazioni p ON p.campagna_id = c.id
--- WHERE c.id = 1
--- GROUP BY c.id, pr.latte_per_scatola, c.soglia_scatole;
+-- ------------------------------------------------------------
+-- INDICI utili
+-- ------------------------------------------------------------
+CREATE INDEX idx_utenti_ruolo ON utenti(ruolo);
+CREATE INDEX idx_collette_stato ON collette(stato);
+CREATE INDEX idx_prenotazioni_colletta ON prenotazioni(id_colletta);
+CREATE INDEX idx_prodotti_fornitore ON prodotti(id_fornitore);
+CREATE INDEX idx_proposte_stato ON proposte_prodotti(stato);
+CREATE INDEX idx_pagamenti_stripe_intent ON pagamenti(stripe_payment_intent_id);
+CREATE INDEX idx_eventi_stripe_tipo ON eventi_stripe(tipo_evento);
+CREATE INDEX idx_notifiche_utente_letta ON notifiche(id_utente, letta);
