@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BuyPool - Login</title>
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <div class="main-content" style="margin-left: 0; margin-top: 0;"></div>
+
+  <script type="module">
+    import { LoginPage } from './js/pages/login.js';
+    import { RegisterPage } from './js/pages/register.js';
+    import { initSession } from './js/state.js';
+
+    initSession();
+
+    function handleRoute() {
+      const hash = window.location.hash.slice(1) || '/login';
+      const content = document.querySelector('.main-content');
+
+      if (hash === '/register') {
+        RegisterPage();
+      } else {
+        LoginPage();
+      }
+    }
+
+    window.addEventListener('hashchange', handleRoute);
+    handleRoute();
+  </script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal.min.js" async defer></script>
+</body>
+</html>
