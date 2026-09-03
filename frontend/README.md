@@ -57,9 +57,7 @@ frontend/
 │           ├── ordini.js
 │           ├── ritiri.js
 │           └── notifiche.js
-├── img/                    # Immagini e icon
-├── Memory.md               # Note di sviluppo
-└── future-features.md      # Funzionalità rimosse (documentazione)
+└── img/                    # Immagini e icon
 ```
 
 ## Prerequisiti
