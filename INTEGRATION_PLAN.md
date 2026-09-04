@@ -1,106 +1,83 @@
 # BuyPool — Backend ⇄ Frontend Integration Plan
 
-> Working notes for aligning the backend (`api/`) with Yonas's front end (`frontend/`, on the `Yonas` branch).
-> Decision taken: **reshape the backend to the front-end vocabulary, without weakening the current security model.**
-> **Blocked on:** Abdu's database. His schema is the source of truth for the new field names — the front end was built from it.
+> Status of aligning the backend (`api/`) with Yonas's front end (`frontend/`, `Yonas` branch)
+> and Abdu's database (`schema.sql` → `collette_acquisto_gruppo`, already on `main`).
+> **Backend has been reshaped to Abdu's schema.** Remaining work + team asks are below.
 
 ---
 
-## 0. 🙋 What I need from the team to move forward (please read)
+## 0. 🙋 What I still need from the team
 
-I've analysed the front end against the backend. The two currently use **different data models**, so before I can wire them together I need the items below. These are blocking my backend work — the sooner I get them, the sooner the app becomes workable end-to-end.
+### From Abdu (database)
+1. Confirm the DB has **no `wallet` table** on purpose (the front end's `wallet.js` calls `/wallet` + `/wallet/movimenti`). Add a table, or we drop the wallet feature.
+2. **Pickup model**: front end uses `QR_CODES` (token per reservation); your DB models it as `consegne` (deliveries). We need to pick one.
+3. **Prices**: `collette` has no `prezzo_base` / `prezzo_corrente` / `percentuale_commissione`; prices live only on `prodotti.prezzo_unitario`. Where should discount/commission come from?
+4. **Stripe** — in scope for the demo (real keys + webhook), or leave the payment endpoints stubbed?
+5. There's **no seed data** in `schema.sql`. To test admin features, one user must be promoted: `UPDATE utenti SET ruolo='admin' WHERE email='...';`
 
-### From Abdu (database) — this is the main blocker
-Please **export your BuyPool database schema and commit it to the repo** (a plain `.sql` file):
-- In phpMyAdmin: select the `buypool` DB → **Export → SQL** → include table structure (and sample data if you have it) → save as a `.sql` file and push it. Tell me which branch.
-- **Do NOT commit** `config.php`, passwords, or the raw MySQL data files — just the `.sql`.
-- Along with it, please confirm:
-  1. The `ruolo` enum values (is it `cliente` / `fornitore` / `admin`?).
-  2. Which of these tables exist: **wallet, pagamenti (Stripe), notifiche, ordini_fornitore, scaglioni_prezzo, proposte/voti**.
-  3. Is **Stripe** actually in scope now (real checkout + keys), or should I stub it for the demo?
-  4. Are there `google_id` / `microsoft_id` columns — i.e. is Google/Microsoft login in scope now?
-
-### From Yonas (front end) — needed once Abdu's schema is locked
-1. We need to agree on **one shared data dictionary** (field names + campaign states). Right now the front end uses `quantita_minima` / `data_limite` / states like `in_corso`, `riuscita`; I'll align the backend to whatever we lock in.
-2. `register` sends a `cognome` field — fine once the DB has that column.
-3. Role labels in `constants.js` expect `cliente` / `fornitore` — align these with the DB enum.
-4. Auth: the front end sends a fake Bearer token but actually relies on the session cookie (works same-origin only). We should decide: keep sessions, or move to real tokens.
-5. Most pages still read `js/mock.js` — they'll need to switch to `apiGet(...)` as I ship each endpoint.
-
-Full technical detail for each of these is in the sections below.
+### From Yonas (front end)
+1. **Wire the mock pages to the API** — most pages still read `js/mock.js`; switch them to `apiGet(...)`. Endpoint list in Section 3.
+2. **Field names**: the backend now returns FE-style fields (`quantita_minima`, `quantita_attuale`, `data_limite`, `stato`, `nome_azienda`, user `id`, etc.). A campaign is `colletta`; the endpoint base is `/collette`.
+3. `prezzo_corrente` / `percentuale_commissione` aren't in the DB yet — pages that show them (home, dettaglio) will need a fallback until Abdu decides (see Abdu #3).
+4. Auth stays **session-cookie based** (same-origin). The fake Bearer token in `api.js` is harmless but dead — safe to drop.
 
 ---
 
-## 1. Direction (decided)
+## 1. Security invariants — preserved through the reshape ✅
 
-- The backend adopts the front end's **data dictionary** (field names, states, entities).
-- Abdu's DB is the canonical schema. We do **not** invent new tables now — we wait for his and adjust.
-- The existing `schema.sql` (boxes `scatole` / cans `latte` model) is treated as legacy; expect it to be replaced/merged with Abdu's.
+Every rewritten endpoint keeps: PDO prepared statements (`EMULATE_PREPARES=false`); server-side sessions + `session_regenerate_id(true)` on login/register; `password_hash`/`password_verify` (the DB column is `password` but only ever holds a bcrypt hash — never plaintext); generic login error (no user enumeration); `richiedi_login()` on protected routes and `richiedi_admin()` on admin routes; errors to the log only; the `{ok,dati}` / `{ok,errore}` envelope.
 
-## 2. Security invariants — DO NOT compromise (carry these into every rewritten endpoint)
+## 2. What was built (backend now matches `collette_acquisto_gruppo`)
 
-These are the parts of the current backend that must survive the reshape unchanged:
+New `api/` structure (old boxes/cans files removed: `campagne/partecipazioni/assegnazioni/ritiro.php`, `lib/ripartizione.php`):
 
-1. **PDO prepared statements everywhere**, `ATTR_EMULATE_PREPARES => false` (`lib/db.php`). No string-built SQL, ever.
-2. **Server-side sessions** with `session_regenerate_id(true)` on login, `httponly` + `samesite=Lax` cookies (`index.php`, `auth.php`).
-3. **`password_hash` / `password_verify`**, and the same generic error for bad email vs bad password (no user enumeration).
-4. **`richiedi_login()` on every protected endpoint**; `sono_admin()` gate on every admin endpoint.
-5. **Errors to the log, never to the client** (`display_errors=0`; single `{ok:false,errore:{codice,messaggio}}` envelope via `risposta.php`).
-6. **Input validation** via `campo()` / `campo_int()` / `corpo()` — keep validating on the reshaped fields too.
-7. Response envelope stays `{ ok, dati }` / `{ ok, errore }` — this already matches `frontend/js/api.js`, don't change it.
+- `lib/stato.php` — colletta state machine: `in_corso → riuscita/fallita`, reverts to `in_corso` if reservations drop below threshold; admin-only states (`ordine_fornitore/consegnata/annullata`) left untouched; keeps `quantita_attuale` synced to the sum of active reservations, under a `FOR UPDATE` lock.
+- `endpoints/auth.php` — register (now takes `cognome`, auto-login), login, logout, `GET/PUT /io` (profile), Google/Microsoft stubs (501).
+- `endpoints/catalogo.php` — `/fornitori`, `/fornitori/{id}` (+products), `/prodotti`, `/sedi`.
+- `endpoints/collette.php` — list, detail (with progress + participants + my reservation), create (admin), status update (admin).
+- `endpoints/prenotazioni.php` — join a colletta, `/mie/prenotazioni`, cancel (with state recompute).
+- `endpoints/proposte.php` — list (with vote counts), create, vote (favore/contrario, one per user).
+- `endpoints/notifiche.php` — my notifications, mark-as-read.
+- `endpoints/pagamenti.php` — Stripe checkout/status + wallet: **501 stubs** (see team asks).
+- `endpoints/admin.php` — user list, KPI statistics.
 
-## 3. What I need from Abdu before the real work
+Verified: all files pass `php -l`, and the whole thing was tested **end-to-end against Abdu's live schema** (MAMP MySQL): register → login (session) → browse fornitori/prodotti/sedi → list/detail collette → join a colletta (amount auto-computed) → `/mie/prenotazioni` → cancel → state machine keeps `quantita_attuale` in sync and flips `in_corso ↔ riuscita` at the threshold → create/vote a proposta → notifications → admin gate (403 as cliente, 200 as admin) → wallet/Stripe return clean 501s. All green.
 
-- The **`.sql` schema dump** (tables + columns + enums + FKs), and sample data if any.
-- Confirmation of the **`ruolo` enum** values (`cliente` / `fornitore` / `admin`?) — front end assumes these.
-- Whether the DB includes: **wallet, pagamenti (Stripe), notifiche, ordini_fornitore, scaglioni_prezzo, proposte/voti** — the front end assumes all of them.
-- Whether **Stripe** is actually in scope (keys, checkout) or a stub for the demo.
-- OAuth: are `google_id` / `microsoft_id` columns present? Is Google/Microsoft login in scope now?
+## 2b. How this fits everyone's work
 
-## 4. Endpoint build queue (execute once Abdu's DB is in)
+- **Doesn't touch anyone else's files.** The reshape changed only `api/**`, `INTEGRATION_PLAN.md`, and `config.example.php`. It does **not** modify Yonas's `frontend/` or Abdu's `schema.sql` — so merging it to `main` won't disturb their branches or work.
+- **Fits Abdu's DB:** every query targets his `collette_acquisto_gruppo` tables/columns exactly (unified `utenti` + `fornitori_dettagli`/`amministratori_dettagli`, `collette`, `prenotazioni`, `proposte_prodotti`/`voti_proposte`, `notifiche`, `sedi`). His `password` column stores a bcrypt hash. His enum values and states are used as-is.
+- **Fits Yonas's front end:** responses use the front-end's vocabulary and shapes — user objects expose `id`, campaigns expose `quantita_minima`/`quantita_attuale`/`data_limite`/`stato`, suppliers expose `nome_azienda`, etc., and everything uses the `{ok,dati}`/`{ok,errore}` envelope his `api.js` already parses. He wires each mock page to the matching endpoint in Section 3 at his own pace; nothing forces a big-bang change.
+- **Note on ports:** this machine's MAMP runs MySQL on **3306**, not the usual 8889 — set the real port in `config.php` (see `config.example.php`).
 
-Ordered by "front end already calls it" → "front end will call it after Yonas wires the mock pages."
+## 3. Endpoint reference (for Yonas, to wire the pages)
 
-### A. Front end calls these TODAY (highest priority)
-| FE call | Action | Needs from Abdu |
+| Method | Path | Serves |
 |---|---|---|
-| `POST /registrazione` | accept `cognome` (FE sends it) | `cognome` column |
-| `POST /login`, `GET /io` | keep; return FE-shaped user (`ruolo` values, `cognome`) | role enum |
-| `POST /auth/google`, `POST /auth/microsoft` | verify provider token, upsert user, open session | `google_id`/`microsoft_id`, scope decision |
-| `GET /wallet`, `GET /wallet/movimenti` | balance + movements | wallet table |
-| `POST /pagamento/checkout`, `GET /pagamento/stato` | Stripe checkout session + status | pagamenti table, Stripe keys |
+| POST | `/registrazione`, `/login`, `/logout` | login/register |
+| GET/PUT | `/io` | current user / update profile |
+| GET | `/collette`, `/collette/{id}` | home, dettaglio |
+| POST | `/collette/{id}/prenotazioni` | join a campaign |
+| GET | `/mie/prenotazioni` | dashboard, ordini, partecipazioni |
+| DELETE | `/prenotazioni/{id}` | cancel a reservation |
+| GET | `/fornitori`, `/fornitori/{id}`, `/prodotti`, `/sedi` | suppliers, products, pickup points |
+| GET/POST | `/proposte`, `POST /proposte/{id}/voto` | wishlist + voting |
+| GET | `/notifiche`, `POST /notifiche/{id}/letta` | notifications + badge |
+| POST/GET | `/collette` (POST), `PUT /collette/{id}` | admin campaign create / status |
+| GET | `/admin/utenti`, `/admin/statistiche` | admin dashboard |
+| — | `/pagamento/*`, `/wallet/*`, `/auth/google\|microsoft` | **501 stub** — pending team decisions |
 
-### B. Buildable as soon as DB lands (FE pages exist, Yonas must wire them)
-| FE page | Endpoint to build |
-|---|---|
-| `home.js`, `dettaglio.js` | `GET /campagne`, `GET /campagne/{id}` reshaped to FE fields |
-| `dashboard.js`, `partecipazioni.js` | `GET /mie/partecipazioni` (or `/mie/prenotazioni`) |
-| `ordini.js` | `GET /mie/ordini` + QR per reservation |
-| `fornitori.js`, `fornitori-dettaglio.js` | `GET /fornitori`, `GET /fornitori/{id}` (+ products) |
-| `profilo.js` | `PATCH /io` (profile update) |
-| `proposte.js` | `GET/POST /proposte`, `POST /proposte/{id}/voto` |
-| `notifiche.js` + header badge | `GET /notifiche`, `POST /notifiche/{id}/letta` |
-| `admin/*` | `GET /admin/statistiche`, `GET /admin/utenti`, campaign edit/delete/confirm, `GET/POST /ordini-fornitore`, `POST /notifiche` |
+## 4. Backend TODOs still open
 
-## 5. Backend TODOs still owed regardless of the reshape (your role B work)
+- Stripe checkout + webhook (`eventi_stripe`), once Abdu confirms scope + keys.
+- Wallet endpoints, once there's a table (or removal from the front end).
+- Pickup/delivery endpoints on the `consegne` table, once the QR-vs-consegne question is settled.
+- Supplier-order endpoints (`ordini_fornitore`) for the admin orders page.
 
-These exist in your code today and must be finished, adapted to whatever the final "campaign/reservation" model is:
-- `lib/stato.php` → `ricalcola_stato()` (campaign state machine)
-- `endpoints/assegnazioni.php` → `assegnazioni_ripartisci()` (or its equivalent under the new model)
-- `endpoints/ritiro.php` → `ritiro_conferma()` (pickup confirmation — the double-pickup guard is the key check)
-- swap the provisional `lib/ripartizione.php` for Role A's real algorithm (if the boxes/cans model survives in Abdu's schema)
+## 5. How to run / test locally
 
-## 6. Hand to Yonas (front-end changes only he can make)
-
-1. Reconcile field names/states to the final dictionary (once Abdu's DB is locked).
-2. `register` sends `cognome` — fine once the column exists.
-3. Role labels: FE `constants.js` expects `cliente`/`fornitore` — align with the DB enum.
-4. Auth: FE fakes a Bearer token but relies on the session cookie (works same-origin only). Decide: keep sessions (drop the fake token) or move backend to real JWT.
-5. 15 of ~16 pages still read `js/mock.js` — they need to be switched to `apiGet(...)` once the endpoints exist.
-
-## 7. Sequencing
-
-1. **Now:** this plan + preserve security invariants. No throwaway code.
-2. **When Abdu sends the DB:** import it, confirm names, then execute the build queue (Section 4) in your existing secure style.
-3. **Then:** finish the Section 5 TODOs and make it hostable.
-4. **Iterate** with Yonas as pages get wired.
+1. In phpMyAdmin, import `schema.sql` (creates DB `collette_acquisto_gruppo`).
+2. Copy `api/config.example.php` → `api/config.php` (DB name is already correct).
+3. Front end: `http://localhost:8888/buypool/frontend/index.html`; API base: `http://localhost:8888/buypool/api`.
+4. Quick check: `GET http://localhost:8888/buypool/api/salute` → `{"ok":true,...}`.
+5. Register a user, then to test admin: `UPDATE utenti SET ruolo='admin' WHERE email='you@...';`
