@@ -1,0 +1,21 @@
+# credenziali - MAI committare
+api/config.php
+
+# dipendenze
+/vendor/
+node_modules/
+
+# sistema
+.DS_Store
+Thumbs.db
+*.log
+
+# editor
+.vscode/
+.idea/
+*.swp
+
+# database locali
+*.sqlite
+
+echo "README.md" >> .gitignore
