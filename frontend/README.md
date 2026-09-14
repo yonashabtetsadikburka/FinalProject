@@ -16,6 +16,7 @@ Frontend vanilla HTML/CSS/JS per la piattaforma di group-buying **BuyPool**. SPA
 ## Struttura
 
 ```
+<<<<<<< HEAD
 buypool/
 ├── .gitignore
 ├── README.md
@@ -106,6 +107,61 @@ buypool/
                 ├── ritiri.js           # Conferma ritiro fisico (QR scan)
                 ├── fornitori.js        # CRUD fornitori + inviti
                 └── notifiche.js        # Invio notifiche admin
+=======
+frontend/
+├── index.html              # Entry point — Login/Register
+├── app.html                # Applicazione principale (dopo login)
+├── css/
+│   ├── variables.css       # Variabili CSS (colori, font, spacing)
+│   ├── base.css            # Reset e stili base
+│   ├── layout.css          # Layout header, main, sidebar
+│   ├── components.css      # Stili componenti UI riutilizzabili
+│   ├── pages.css           # Stili specifici per pagina
+│   └── responsive.css      # Media query mobile/tablet
+├── js/
+│   ├── api.js              # Client HTTP per chiamate API
+│   ├── auth.js             # Login, register, Google OAuth, sessione
+│   ├── constants.js        # Costanti (URL API, stati, label)
+│   ├── mock.js             # Dati di test (fallback senza backend)
+│   ├── state.js            # Gestione stato globale e sessione
+│   ├── components/         # Componenti UI riutilizzabili
+│   │   ├── header.js       # Header con navigazione
+│   │   ├── toast.js        # Notifiche toast
+│   │   ├── modal.js        # Modali
+│   │   ├── card.js         # Card
+│   │   ├── table.js        # Tabelle
+│   │   ├── badge.js        # Badge di stato
+│   │   ├── input.js        # Campi form
+│   │   ├── button.js       # Pulsanti
+│   │   ├── tabs.js         # Tab navigation
+│   │   ├── progress.js     # Barre di progresso
+│   │   ├── dropdown.js     # Menu a tendina
+│   │   ├── sidebar.js      # Sidebar
+│   │   ├── mobile-nav.js   # Navigazione mobile
+│   │   └── auth-guard.js   # Guardia autenticazione
+│   └── pages/              # Pagine applicazione
+│       ├── login.js
+│       ├── register.js
+│       ├── home.js
+│       ├── dettaglio.js
+│       ├── dashboard.js
+│       ├── fornitori.js
+│       ├── fornitori-dettaglio.js
+│       ├── wallet.js
+│       ├── notifiche.js
+│       ├── profilo.js
+│       ├── ordini.js
+│       ├── partecipazioni.js
+│       ├── pagamento-successo.js
+│       └── admin/
+│           ├── dashboard.js
+│           ├── campagne.js
+│           ├── utenti.js
+│           ├── ordini.js
+│           ├── ritiri.js
+│           └── notifiche.js
+└── img/                    # Immagini e icon
+>>>>>>> dea2a938bcc8d97f178b6f65bad9b75083a9e883
 ```
 
 ## Prerequisiti
