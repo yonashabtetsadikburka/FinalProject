@@ -1,160 +1,46 @@
-import { getState } from '../../state.js';
-import { UTENTI, COLLETTE, PRENOTAZIONI, FORNITORI, PRODOTTI, PAGAMENTI, ORDINI_FORNITORE } from '../../mock.js';
+import { apiGet, apiPost, apiPut } from '../../api.js';
 import { Card } from '../../components/card.js';
 import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES } from '../../constants.js';
 
-export function AdminDashboardPage() {
+export async function AdminDashboardPage() {
   const content = document.getElementById('content-area') || document.querySelector('.main-content');
   if (!content) return;
+  content.innerHTML = '<div class="content-area"><div class="loading-spinner">Caricamento...</div></div>';
 
-  const utentiTotali = UTENTI.length;
-  const campagneAttive = COLLETTE.filter(c => c.stato === 'in_corso').length;
-  const campagneRiuscite = COLLETTE.filter(c => c.stato === 'riuscita' || c.stato === 'ordine_fornitore').length;
+  try {
+    const [utentiRes, campagneRes, walletRes] = await Promise.all([
+      apiGet('/utenti').catch(() => ({ dati: [] })),
+      apiGet('/campagne').catch(() => ({ dati: [] })),
+      apiGet('/wallet/statistiche').catch(() => ({ dati: {} }))
+    ]);
+    const utenti = utentiRes.dati || [];
+    const campagne = campagneRes.dati || [];
+    const stats = walletRes.dati || {};
 
-  const totaleCommissione = PAGAMENTI
-    .filter(p => p.stato === 'confermato')
-    .reduce((acc, p) => acc + (p.commissione_agenzia || 0), 0);
+    const campagneAttive = campagne.filter(c => c.stato === 'in_corso').length;
+    const campagneRiuscite = campagne.filter(c => c.stato === 'riuscita').length;
+    const campagnePronte = campagne.filter(c => c.stato === 'ordine_pronto').length;
+    const totalePartecipanti = campagne.reduce((acc, c) => acc + (parseInt(c.partecipanti) || 0), 0);
+    const incassoTotale = parseFloat(stats.totale_addebiti) || 0;
+    const commissioneTotale = parseFloat(stats.totale_commissioni) || 0;
 
-  const commissioneMese = PAGAMENTI
-    .filter(p => p.stato === 'confermato' && new Date(p.data_pagamento).getMonth() === new Date().getMonth())
-    .reduce((acc, p) => acc + (p.commissione_agenzia || 0), 0);
-
-  const totaleAddebiti = PAGAMENTI
-    .filter(p => p.stato === 'confermato')
-    .reduce((acc, p) => acc + (p.importo || 0), 0);
-
-  const quickLinks = [
-    { route: '/admin/campagne', label: 'Gestione Campagne', icon: '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>' },
-    { route: '/admin/utenti', label: 'Gestione Utenti', icon: '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' },
-    { route: '/admin/ordini', label: 'Gestione Ordini', icon: '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>' },
-    { route: '/admin/ritiri', label: 'Gestione Ritiri', icon: '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>' },
-    { route: '/admin/notifiche', label: 'Invio Notifiche', icon: '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>' }
-  ];
-
-  content.innerHTML = `
-    <div class="content-area">
-      <div class="page-header">
-        <h1>Dashboard Admin</h1>
-      </div>
-
-      <div class="dashboard-grid">
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-primary">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-              </div>
-              <div class="kpi-label">Utenti Totali</div>
-              <div class="kpi-value">${utentiTotali}</div>
-            </div>
-          </div>
+    content.innerHTML = `
+      <div class="content-area">
+        <div class="page-header"><h1>Dashboard Admin</h1></div>
+        <div class="dashboard-grid">
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon kpi-icon-primary"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div><div class="kpi-label">Utenti Totali</div><div class="kpi-value">${utenti.length}</div></div></div></div>
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon kpi-icon-success"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg></div><div class="kpi-label">Campagne Attive</div><div class="kpi-value">${campagneAttive}</div></div></div></div>
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon kpi-icon-warning"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg></div><div class="kpi-label">Ordini da Confermare</div><div class="kpi-value">${campagneRiuscite}</div></div></div></div>
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon kpi-icon-error"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div><div class="kpi-label">Totale Partecipanti</div><div class="kpi-value">${totalePartecipanti}</div></div></div></div>
         </div>
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-success">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-              </div>
-              <div class="kpi-label">Campagne Attive</div>
-              <div class="kpi-value">${campagneAttive}</div>
-            </div>
-          </div>
+        <div class="dashboard-grid" style="margin-top:var(--space-4);">
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon" style="background:var(--color-success-light);color:var(--color-success);"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><div class="kpi-label">Incasso Totale</div><div class="kpi-value">&euro;${incassoTotale.toFixed(2)}</div></div></div></div>
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon" style="background:var(--color-info-light);color:var(--color-info);"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div><div class="kpi-label">Commissioni Incassate</div><div class="kpi-value">&euro;${commissioneTotale.toFixed(2)}</div></div></div></div>
+          <div class="card"><div class="card-content"><div class="kpi-card"><div class="kpi-icon" style="background:var(--color-warning-light);color:var(--color-warning);"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></div><div class="kpi-label">Ordini Pronti</div><div class="kpi-value">${campagnePronte}</div></div></div></div>
         </div>
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-warning">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-              </div>
-              <div class="kpi-label">Ordini da Confermare</div>
-              <div class="kpi-value">${campagneRiuscite}</div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-error">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              </div>
-              <div class="kpi-label">Totale Commissioni</div>
-              <div class="kpi-value">&euro;${totaleCommissione.toFixed(2)}</div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-success">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              </div>
-              <div class="kpi-label">Commissioni Mese</div>
-              <div class="kpi-value">&euro;${commissioneMese.toFixed(2)}</div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-content">
-            <div class="kpi-card">
-              <div class="kpi-icon kpi-icon-warning">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-              </div>
-              <div class="kpi-label">Totale Addebiti</div>
-              <div class="kpi-value">&euro;${totaleAddebiti.toFixed(2)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      ${Card({ children: `
-        <div class="card-content">
-          <h3 style="margin-bottom: var(--space-4); font-size: var(--text-lg); font-weight: var(--font-semibold);">Accesso Rapido</h3>
-          <div class="admin-quick-links">
-            ${quickLinks.map(link => `
-              <a href="#${link.route}" class="admin-quick-link">
-                <div class="admin-quick-link-icon">${link.icon}</div>
-                <span>${link.label}</span>
-              </a>
-            `).join('')}
-          </div>
-        </div>
-      ` })}
-
-      ${Card({ children: `
-        <div class="card-content">
-          <h3 style="margin-bottom: var(--space-4); font-size: var(--text-lg); font-weight: var(--font-semibold);">Ultime Attivita</h3>
-          ${PAGAMENTI.length > 0 ? `
-            <div class="table-container">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Tipo</th>
-                    <th>Prenotazione</th>
-                    <th>Importo</th>
-                    <th>Commissione</th>
-                    <th>Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${PAGAMENTI.slice(-5).reverse().map(p => `
-                    <tr>
-                      <td><span class="badge badge-success">${p.tipo_pagamento}</span></td>
-                      <td class="text-sm">Prenotazione #${p.id_prenotazione}</td>
-                      <td class="text-sm text-success">&euro;${p.importo.toFixed(2)}</td>
-                      <td class="text-sm text-secondary">&euro;${(p.commissione_agenzia || 0).toFixed(2)}</td>
-                      <td class="text-sm text-secondary">${new Date(p.data_pagamento).toLocaleDateString('it-IT')}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : `
-            <div class="empty-state" style="padding: var(--space-6);">
-              <p class="text-sm text-secondary">Nessuna attivita recente.</p>
-            </div>
-          `}
-        </div>
-      ` })}
-    </div>
-  `;
+        ${Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-4);">Campagne Recenti</h3><div class="table-container"><table class="table"><thead><tr><th>Campagna</th><th>Fornitore</th><th>Stato</th><th>Partecipanti</th></tr></thead><tbody>${campagne.slice(0, 5).map(c => `<tr><td class="font-medium">${c.prodotto || '-'}</td><td>${c.fornitore || '-'}</td><td>${STATI_CAMPAGNA_LABELS[c.stato] || c.stato}</td><td>${c.partecipanti || 0}/${c.quantita_minima}</td></tr>`).join('')}</tbody></table></div></div>` })}
+      </div>`;
+  } catch (err) {
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+  }
 }

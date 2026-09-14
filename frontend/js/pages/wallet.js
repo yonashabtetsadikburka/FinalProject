@@ -26,8 +26,8 @@ export async function WalletPage() {
       apiGet('/wallet'),
       apiGet('/wallet/movimenti')
     ]);
-    saldo = wallet?.saldo || 0;
-    movimenti = movements || [];
+    saldo = wallet.dati?.saldo || 0;
+    movimenti = movements.dati || [];
   } catch (e) {
     error = e.message || 'Errore nel caricamento';
     movimenti = [];

@@ -22,8 +22,8 @@ export async function loginWithMicrosoft(microsoftToken) {
   return user;
 }
 
-export async function register({ nome, cognome, email, password }) {
-  const data = await apiPost('/registrazione', { nome, cognome, email, password });
+export async function register({ nome, cognome, email, password, tipo, privacy }) {
+  const data = await apiPost('/registrazione', { nome, cognome, email, password, tipo, privacy });
   const user = data.dati;
   saveSession(user, 'session_' + user.id);
   return user;
@@ -36,6 +36,17 @@ export function logout() {
 export function isAdmin() {
   const { user } = getState();
   return user?.ruolo === 'admin';
+}
+
+export function isFornitore() {
+  const { user } = getState();
+  return user?.ruolo === 'fornitore';
+}
+
+export function landingPerRuolo(user) {
+  if (user?.ruolo === 'admin') return 'app.html#/admin';
+  if (user?.ruolo === 'fornitore') return 'app.html#/fornitore';
+  return 'app.html#/';
 }
 
 export function isAuthenticated() {

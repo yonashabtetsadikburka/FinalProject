@@ -13,7 +13,7 @@ export function PagamentoRisultatoPage({ successo = true } = {}) {
     : '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>';
   const titolo = successo ? 'Pagamento completato!' : 'Pagamento annullato';
   const messaggio = successo
-    ? 'Il tuo pagamento e\' stato ricevuto con successo. Riceverai una conferma via email.'
+    ? 'Il tuo pagamento e\' stato ricevuto con successo. Verrai reindirizzato ai tuoi ordini...'
     : 'Il pagamento non e\' stato completato. Puoi riprovare in qualsiasi momento dalla pagina dell\'ordine.';
 
   content.innerHTML = `
@@ -37,7 +37,11 @@ export function PagamentoRisultatoPage({ successo = true } = {}) {
   `;
 
   if (successo && sessionId) {
-    apiGet(`/pagamento/stato?session_id=${sessionId}`).catch(() => {});
+    apiGet(`/pagamento/stato?session_id=${sessionId}`).catch(() => {}).finally(() => {
+      setTimeout(() => { window.location.hash = '#/ordini'; }, 2000);
+    });
+  } else if (successo) {
+    setTimeout(() => { window.location.hash = '#/ordini'; }, 3000);
   }
 }
 

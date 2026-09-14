@@ -1,4 +1,4 @@
-import { register } from '../auth.js';
+import { register, landingPerRuolo } from '../auth.js';
 import { showToast } from '../components/toast.js';
 
 export function RegisterPage() {
@@ -56,10 +56,14 @@ export function RegisterPage() {
               <input type="hidden" name="tipo" value="privato">
             </div>
             <div id="register-error" style="color: var(--color-error); font-size: var(--text-sm); display: none;"></div>
+            <label class="text-sm" style="display:flex;gap:var(--space-2);align-items:flex-start;margin-bottom:var(--space-3);">
+              <input type="checkbox" name="privacy" value="1" required style="margin-top:4px;">
+              <span>Ho letto l'<a href="#/privacy">informativa privacy</a> e acconsento al trattamento dei dati.</span>
+            </label>
             <button type="submit" class="btn btn-default w-full">Registrati</button>
           </form>
           <div class="login-footer">
-            Hai gia' un account? <a href="#/login">Accedi</a>
+            Hai gia' un account? <a href="#/login">Accedi</a> &middot; <a href="#/privacy">Privacy</a>
           </div>
         </div>
       </div>
@@ -73,14 +77,15 @@ export function RegisterPage() {
     errorEl.style.display = 'none';
 
     try {
-      await register({
+      const user = await register({
         nome: formData.get('nome'),
         cognome: formData.get('cognome'),
         email: formData.get('email'),
         password: formData.get('password'),
-        tipo: formData.get('tipo')
+        tipo: formData.get('tipo'),
+        privacy: formData.get('privacy') ? 1 : 0
       });
-      window.location.href = 'app.html#/';
+      window.location.href = landingPerRuolo(user);
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.style.display = 'block';

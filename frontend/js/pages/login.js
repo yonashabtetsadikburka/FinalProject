@@ -1,4 +1,5 @@
-import { login, loginWithGoogle, loginWithMicrosoft } from '../auth.js';
+import { login, loginWithGoogle, loginWithMicrosoft, landingPerRuolo } from '../auth.js';
+import { getState } from '../state.js';
 
 const MICROSOFT_CLIENT_ID = 'YOUR_MICROSOFT_CLIENT_ID_HERE';
 
@@ -6,7 +7,7 @@ window.handleCredentialResponse = async function(response) {
   const errorEl = document.getElementById('login-error');
   try {
     await loginWithGoogle(response.credential);
-    window.location.href = 'app.html#/';
+    window.location.href = landingPerRuolo(getState().user);
   } catch (err) {
     errorEl.textContent = err.message || 'Errore durante il login con Google';
     errorEl.style.display = 'block';
@@ -101,7 +102,7 @@ async function handleMicrosoftLogin() {
 
     const response = await msalInstance.loginPopup(loginRequest);
     await loginWithMicrosoft(response.idToken);
-    window.location.href = 'app.html#/';
+    window.location.href = landingPerRuolo(getState().user);
   } catch (err) {
     if (err.errorCode === 'user_cancelled') return;
     errorEl.textContent = err.message || 'Errore durante il login con Microsoft';
@@ -161,7 +162,8 @@ export function LoginPage() {
             <div id="microsoft-btn-container" style="flex: 1;"></div>
           </div>
           <div class="login-footer">
-            Non hai un account? <a href="#/register">Registrati</a>
+            Non hai un account? <a href="#/register">Registrati</a><br>
+            <a href="#/password/dimenticata">Password dimenticata?</a> &middot; <a href="#/privacy">Privacy</a>
           </div>
         </div>
       </div>
@@ -179,8 +181,8 @@ export function LoginPage() {
     errorEl.style.display = 'none';
 
     try {
-      await login(email, password);
-      window.location.href = 'app.html#/';
+      const user = await login(email, password);
+      window.location.href = landingPerRuolo(user);
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.style.display = 'block';

@@ -1,148 +1,157 @@
-import { getState } from '../../state.js';
-import { PRENOTAZIONI, PRODOTTI, COLLETTE, QR_CODES, ORDINI_FORNITORE, UTENTI } from '../../mock.js';
-import { Table } from '../../components/table.js';
+import { apiGet, apiPost } from '../../api.js';
+import { setPageInterval } from '../../page-timers.js';
 import { Badge } from '../../components/badge.js';
 import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES, STATI_PRENOTAZIONE_LABELS } from '../../constants.js';
 
-function handleConfermaOrdine(collettaId) {
-  const colletta = COLLETTE.find(c => c.id === collettaId);
-  if (!colletta || colletta.stato !== 'riuscita') return;
+window.confermaOrdine = async function(collettaId) {
+  try {
+    await apiPost(`/campagne/${collettaId}/ripartisci`, {});
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-success';
+    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Ordine confermato!</div><div class="toast-description">Gli utenti possono ora procedere al pagamento.</div></div>';
+    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+    renderAdminOrdini();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
-  // Find all prenotazioni for this colletta
-  const prenotazioni = PRENOTAZIONI.filter(p => p.id_colletta === collettaId && p.stato === 'prenotata');
-  if (prenotazioni.length === 0) return;
+window.inviaAlFornitore = async function(collettaId) {
+  try {
+    await apiPost(`/campagne/${collettaId}/invia-fornitore`, {});
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-success';
+    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Ordine inviato al fornitore!</div><div class="toast-description">Gli utenti saranno notificati.</div></div>';
+    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+    renderAdminOrdini();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
-  // Generate QR codes for each prenotazione
-  prenotazioni.forEach(p => {
-    const existingQr = QR_CODES.find(q => q.id_prenotazione === p.id);
-    if (!existingQr) {
-      const token = Array.from({ length: 48 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
-      QR_CODES.push({
-        id: QR_CODES.length + 1,
-        id_prenotazione: p.id,
-        token,
-        quantita_assegnata: p.quantita,
-        stato: 'generato',
-        data_generazione: new Date().toISOString(),
-        data_scansione: null
-      });
-    }
-    p.stato = 'confermata';
-  });
+window.segnaSpedito = async function(consegnaId) {
+  if (!confirm('Segnare questa spedizione come spedita? Il cliente sara\' notificato.')) return;
+  try {
+    await apiPost(`/consegne/${consegnaId}/spedisci`, {});
+    renderAdminOrdini();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
-  // Create ordine fornitore
-  const prezzoTotale = prenotazioni.reduce((acc, p) => acc + (p.quantita * (colletta.prezzo_corrente || 0)), 0);
-  ORDINI_FORNITORE.push({
-    id: ORDINI_FORNITORE.length + 1,
-    id_colletta: collettaId,
-    id_fornitore: colletta.id_fornitore || 1,
-    importo_totale: prezzoTotale,
-    stato: 'inviato',
-    data_ordine: new Date().toISOString(),
-    data_consegna: null
-  });
-
-  // Update colletta state
-  colletta.stato = 'ordine_fornitore';
-  colletta.id_admin_conferma = getState().user?.id;
-  colletta.data_conferma = new Date().toISOString();
-
-  renderAdminOrdini();
-}
-
-function handleConfermaConsegna(collettaId) {
-  const colletta = COLLETTE.find(c => c.id === collettaId);
-  if (!colletta || colletta.stato !== 'ordine_fornitore') return;
-
-  colletta.stato = 'consegnata';
-  renderAdminOrdini();
-}
-
-function renderAdminOrdini() {
+async function renderAdminOrdini() {
   const content = document.getElementById('content-area') || document.querySelector('.main-content');
   if (!content) return;
+  content.innerHTML = '<div class="content-area"><div class="loading-spinner">Caricamento...</div></div>';
 
-  // Group prenotazioni by colletta
-  const ordiniByColletta = {};
-  COLLETTE.forEach(c => {
-    ordiniByColletta[c.id] = {
-      colletta: c,
-      prenotazioni: PRENOTAZIONI.filter(p => p.id_colletta === c.id),
-      ordineFornitore: ORDINI_FORNITORE.find(o => o.id_colletta === c.id)
-    };
-  });
+  try {
+    const [res, consRes] = await Promise.all([
+      apiGet('/admin/ordini'),
+      apiGet('/admin/consegne').catch(() => ({ dati: [] }))
+    ]);
+    const campagne = res.dati || [];
+    const spedizioni = (consRes.dati || []).filter(c => c.modalita === 'consegna_domicilio');
 
-  let ordiniHtml = '';
-
-  Object.values(ordiniByColletta).forEach(({ colletta, prenotazioni, ordineFornitore }) => {
-    if (prenotazioni.length === 0) return;
-
-    const prodotto = PRODOTTI.find(p => p.id === colletta.id_prodotto);
-    const nomeProdotto = prodotto?.nome || 'Campagna #' + colletta.id;
-
-    const prenotazioniHtml = prenotazioni.map(p => {
-      const utente = UTENTI.find(u => u.id === p.id_utente);
-      return `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border);">
-          <div>
-            <div class="text-sm font-medium">${utente ? utente.nome + ' ' + utente.cognome : 'Utente #' + p.id_utente}</div>
-            <div class="text-xs text-secondary">${p.quantita} pezzi</div>
-          </div>
-          ${Badge({ variant: p.stato === 'confermata' ? 'success' : p.stato === 'prenotata' ? 'warning' : 'default', children: STATI_PRENOTAZIONE_LABELS[p.stato] || p.stato })}
+    const spedHtml = spedizioni.length > 0 ? spedizioni.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+        <div>
+          <div class="text-sm font-medium">${s.prodotto} — ${s.quantita} pezzi (${s.nome || ''} ${s.cognome || ''})</div>
+          <div class="text-xs text-secondary">${s.indirizzo_consegna || ''} &middot; &euro;${parseFloat(s.importo_consegna).toFixed(2)}</div>
         </div>
-      `;
-    }).join('');
+        <div style="display:flex;gap:var(--space-2);align-items:center;">
+          ${Badge({ variant: s.stato_consegna === 'consegnata' ? 'success' : s.stato_consegna === 'spedita' ? 'success' : 'warning', children: s.stato_consegna === 'consegnata' ? 'Ricevuto' : s.stato_consegna === 'spedita' ? 'Spedito' : 'Da spedire' })}
+          ${s.stato_consegna === 'in_attesa' || s.stato_consegna === 'pronta' ? `<button class="btn btn-default btn-sm" onclick="segnaSpedito(${s.id})">Segna spedito</button>` : ''}
+        </div>
+      </div>`).join('') : '<div class="empty-state"><p>Nessuna spedizione.</p></div>';
 
-    let azioneHtml = '';
-    if (colletta.stato === 'riuscita') {
-      azioneHtml = `<button class="btn btn-default btn-sm" onclick="confermaOrdine(${colletta.id})">Conferma Ordine</button>`;
-    } else if (colletta.stato === 'ordine_fornitore') {
-      azioneHtml = `
-        <button class="btn btn-outline btn-sm" onclick="confermaConsegna(${colletta.id})">Conferma Consegna</button>
-      `;
-    }
+    let ordiniHtml = '';
+    for (const c of campagne) {
+      const partecipazioni = c.partecipazioni || [];
+      if (partecipazioni.length === 0) continue;
 
-    ordiniHtml += `
-      <div class="card" style="margin-bottom: var(--space-3);">
-        <div class="card-content">
-          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-3);">
-            <div>
-              <h3 style="font-size: var(--text-base); font-weight: var(--font-semibold);">${nomeProdotto}</h3>
-              <div class="text-sm text-secondary">Soglia: ${colletta.quantita_attuale}/${colletta.quantita_minima} pezzi</div>
-            </div>
-            <div style="display: flex; gap: var(--space-2); align-items: center;">
-              ${Badge({ variant: STATI_CAMPAGNA_BADGES[colletta.stato] || 'default', children: STATI_CAMPAGNA_LABELS[colletta.stato] || colletta.stato })}
-              ${azioneHtml}
-            </div>
-          </div>
-          ${ordineFornitore ? `
-            <div style="background: var(--color-bg); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); font-size: var(--text-sm);">
-              <div style="display: flex; justify-content: space-between;">
-                <span class="text-secondary">Ordine Fornitore:</span>
-                <span class="font-medium">&euro;${ordineFornitore.importo_totale.toFixed(2)}</span>
+      const pagati = partecipazioni.filter(p => p.stato === 'pagata').length;
+      const totali = partecipazioni.length;
+      const tuttiPagati = pagati === totali;
+
+      const prenotazioniHtml = partecipazioni.map(p => {
+        const badgeVariant = p.stato === 'pagata' ? 'success' : p.stato === 'confermata' ? 'info' : 'warning';
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
+          <div><div class="text-sm font-medium">${p.nome || 'Utente #' + p.id_utente}</div><div class="text-xs text-secondary">${p.quantita} pezzi</div></div>
+          ${Badge({ variant: badgeVariant, children: STATI_PRENOTAZIONE_LABELS[p.stato] || p.stato })}
+        </div>`;
+      }).join('');
+
+      let azioneHtml = '';
+      if (c.stato === 'riuscita') {
+        azioneHtml = `<button class="btn btn-default btn-sm" onclick="confermaOrdine(${c.id})">Conferma Ordine</button>`;
+      } else if (c.stato === 'ordine_pronto') {
+        if (tuttiPagati) {
+          azioneHtml = `<button class="btn btn-default btn-sm" onclick="inviaAlFornitore(${c.id})">Invia al Fornitore</button>`;
+        } else {
+          azioneHtml = `<span class="text-xs text-secondary">In attesa pagamenti (${pagati}/${totali})</span>`;
+        }
+      }
+
+      const percentuale = c.stato === 'ordine_pronto' ? Math.round((pagati / totali) * 100) : null;
+
+      ordiniHtml += `
+        <div class="card" style="margin-bottom:var(--space-3);">
+          <div class="card-content">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--space-3);">
+              <div><h3 style="font-size:var(--text-base);font-weight:var(--font-semibold);">${c.prodotto || 'Campagna #' + c.id}</h3><div class="text-sm text-secondary">Soglia: ${c.quantita_attuale || 0}/${c.quantita_minima} pezzi</div></div>
+              <div style="display:flex;gap:var(--space-2);align-items:center;">
+                ${Badge({ variant: STATI_CAMPAGNA_BADGES[c.stato] || 'default', children: STATI_CAMPAGNA_LABELS[c.stato] || c.stato })}
+                ${azioneHtml}
               </div>
             </div>
-          ` : ''}
-          <div style="font-size: var(--text-sm); font-weight: var(--font-medium); margin-bottom: var(--space-2);">Partecipazioni (${prenotazioni.length}):</div>
-          ${prenotazioniHtml}
-        </div>
-      </div>
-    `;
-  });
+            ${percentuale !== null ? `
+            <div style="margin-bottom:var(--space-3);">
+              <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-1);">
+                <span class="text-xs text-secondary">Pagamenti</span>
+                <span class="text-xs font-medium">${pagati}/${totali} (${percentuale}%)</span>
+              </div>
+              <div style="height:6px;background:var(--color-border);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${percentuale}%;background:${tuttiPagati ? 'var(--color-success)' : 'var(--color-info)'};border-radius:3px;transition:width 0.3s;"></div>
+              </div>
+            </div>` : ''}
+            <div style="font-size:var(--text-sm);font-weight:var(--font-medium);margin-bottom:var(--space-2);">Partecipazioni (${totali}):</div>
+            ${prenotazioniHtml}
+          </div></div>`;
+    }
 
-  content.innerHTML = `
-    <div class="content-area">
-      <div class="admin-page-header">
-        <h1>Gestione Ordini</h1>
-      </div>
-      ${ordiniHtml || '<div class="empty-state"><p>Nessuna campagna con partecipazioni.</p></div>'}
-    </div>
-  `;
+    content.innerHTML = `
+      <div class="content-area">
+        <div class="admin-page-header"><h1>Gestione Ordini</h1></div>
+        ${ordiniHtml || '<div class="empty-state"><p>Nessuna campagna con partecipazioni.</p></div>'}
+        <div class="card" style="margin-top:var(--space-4);"><div class="card-content">
+          <h3 style="margin-bottom:var(--space-3);">Spedizioni a domicilio</h3>
+          ${spedHtml}
+        </div></div>
+      </div>`;
+  } catch (err) {
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+  }
 }
 
-window.confermaOrdine = handleConfermaOrdine;
-window.confermaConsegna = handleConfermaConsegna;
+let adminOrdiniPoll = null;
 
-export function AdminOrdiniPage() {
-  renderAdminOrdini();
+export async function AdminOrdiniPage() {
+  if (adminOrdiniPoll) clearInterval(adminOrdiniPoll);
+  await renderAdminOrdini();
+
+  adminOrdiniPoll = setPageInterval(async () => {
+    try {
+      const res = await apiGet('/admin/ordini');
+      const campagne = res.dati || [];
+      const hasUnpaid = campagne.some(c =>
+        c.stato === 'ordine_pronto' &&
+        c.partecipazioni?.some(p => p.stato !== 'pagata')
+      );
+      await renderAdminOrdini();
+      if (!hasUnpaid) clearInterval(adminOrdiniPoll);
+    } catch (_) {}
+  }, 5000);
 }

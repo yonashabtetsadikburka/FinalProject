@@ -25,9 +25,13 @@ export async function apiRequest(method, url, body = null) {
     const response = await fetch(`${API_URL}${url}`, config);
 
     if (response.status === 401) {
-      clearSession();
-      window.location.href = 'index.html';
-      throw new Error('Sessione scaduta');
+      // 401 su endpoint auth = credenziali errate, non sessione scaduta: niente redirect
+      const isAuthEndpoint = ['/login', '/registrazione', '/auth/'].some(p => url.includes(p));
+      if (!isAuthEndpoint) {
+        clearSession();
+        window.location.href = 'index.html';
+        throw new Error('Sessione scaduta');
+      }
     }
 
     const data = await response.json();
@@ -58,4 +62,19 @@ export function apiPut(url, body) {
 
 export function apiDelete(url) {
   return apiRequest('DELETE', url);
+}
+
+export async function apiPostForm(url, formData) {
+  const { token } = getState();
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  try {
+    const response = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.errore?.messaggio || 'Errore del server');
+    return data;
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
 }
