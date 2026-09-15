@@ -1,9 +1,9 @@
-# credenziali - MAI committare
-api/config.php
-
 # dipendenze
-/vendor/
+vendor/
 node_modules/
+
+# ambiente
+.env
 
 # sistema
 .DS_Store
@@ -17,5 +17,3 @@ Thumbs.db
 
 # database locali
 *.sqlite
-
-echo "README.md" >> .gitignore

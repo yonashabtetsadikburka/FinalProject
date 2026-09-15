@@ -1,4 +1,4 @@
-export const API_URL = 'http://localhost:8888/TheLegendProject/buypool-backend/public/api';
+export const API_URL = 'http://localhost:8888/FinalProject/buypool-backend/public/api';
 
 export const STATI_CAMPAGNA_LABELS = {
   in_corso: 'In Corso',
