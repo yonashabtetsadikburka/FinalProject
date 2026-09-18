@@ -13,7 +13,7 @@ export function PrivacyPage() {
           <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">BuyPool, P.IVA [al momento non c'è l'abbiamo], sede in Perugia, Umbria, email buypool@gmail.com. Per richieste privacy: buypool@gmail.com.</p>
 
           <h3>2. Quali dati raccogliamo</h3>
-          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">Account: nome, cognome, email, password (solo hash irreversibile), telefono, indirizzo, tipo account. Attivita': partecipazioni alle campagne, pagamenti (importi e date), indirizzi di spedizione, proposte e voti, notifiche ricevute. Dati tecnici: log di accesso e stato sessione.</p>
+          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">Account: nome, cognome, email, password (solo hash irreversibile), telefono, indirizzo (via, CAP, citta, provincia), codice fiscale, partita IVA (opzionale), tipo account. Attivita': partecipazioni alle campagne, pagamenti (importi e date), indirizzi di spedizione, proposte e voti, notifiche ricevute. Dati tecnici: log di accesso e stato sessione.</p>
 
           <h3>3. Perche' li usiamo (finalità e basi giuridiche)</h3>
           <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">Esecuzione del servizio (gestione account, campagne, ordini, pagamenti, consegne); obblighi di legge (conservazione contabile); legittimo interesse (sicurezza, prevenzione abusi); consenso per eventuali comunicazioni promozionali (mai attivo di default).</p>

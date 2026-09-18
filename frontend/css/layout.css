@@ -243,6 +243,12 @@
   justify-content: center;
 }
 
+.nav-badge {
+  position: static;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
 .user-menu {
   position: relative;
 }

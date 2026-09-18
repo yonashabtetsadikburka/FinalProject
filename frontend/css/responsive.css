@@ -50,6 +50,25 @@
     align-items: stretch;
   }
 
+  .campagne-filter-bar .campagne-select {
+    max-width: none;
+    width: 100%;
+  }
+
+  .campagne-filter-bar .campagne-search {
+    width: 100%;
+  }
+
+  .azioni-campagne {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+
+  .azioni-campagne .btn {
+    width: 100%;
+  }
+
   .filter-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;

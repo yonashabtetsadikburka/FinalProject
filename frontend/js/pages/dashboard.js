@@ -26,6 +26,11 @@ const ICON_BAG = '<svg width="20" height="20" fill="none" stroke="currentColor" 
 const ICON_CHECK = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
 const ICON_QR = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>';
 
+const STATI_PROPOSTA_LABELS = {
+  in_attesa: 'In Attesa', approvata_admin: 'Approvata', rifiutata: 'Rifiutata',
+  in_votazione: 'In Votazione', pubblicata: 'Pubblicata', respinta_votazione: 'Respinta'
+};
+
 function statoOrdine(p) {
   if (p.stato_qr === 'scansionato') return { label: 'Ritirato', variant: 'success' };
   const spedizione = p.consegna_modalita === 'consegna_domicilio';
@@ -108,11 +113,14 @@ export async function DashboardPage() {
       </div>`).join('') || '<p class="text-sm text-secondary">Nessuna notifica non letta.</p>';
 
     const propHtml = mieProposte.length > 0
-      ? mieProposte.slice(0, 4).map(p => `
+      ? mieProposte.slice(0, 4).map(p => {
+        const badgeVariant = p.stato === 'in_votazione' ? 'default' : p.stato === 'in_attesa' ? 'warning' : 'secondary';
+        return `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
-          <div class="text-sm font-medium">${p.nome_prodotto}</div>
-          <span class="text-xs text-secondary">${p.stato} &middot; ${p.tot_voti || 0} voti</span>
-        </div>`).join('')
+          <div><div class="text-sm font-medium">${p.nome_prodotto}</div><div class="text-xs text-secondary">${p.tot_voti || 0} voti</div></div>
+          ${Badge({ variant: badgeVariant, children: STATI_PROPOSTA_LABELS[p.stato] || p.stato })}
+        </div>`;
+      }).join('')
       : '<p class="text-sm text-secondary">Nessuna proposta. <a href="#/proposte">Proponi un prodotto</a></p>';
 
     content.innerHTML = `

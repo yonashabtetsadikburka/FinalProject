@@ -135,7 +135,9 @@ window.showUtenteDettaglio = async function(userId) {
               <div><div class="text-xs text-secondary">Ruolo</div><div class="font-medium">${RUOLI_LABELS[u.ruolo] || u.ruolo}</div></div>
               <div><div class="text-xs text-secondary">Tipo</div><div class="font-medium">${u.tipo || '-'}</div></div>
               <div><div class="text-xs text-secondary">Telefono</div><div class="font-medium">${u.telefono || '-'}</div></div>
-              <div><div class="text-xs text-secondary">Indirizzo</div><div class="font-medium">${u.indirizzo || '-'}</div></div>
+              <div><div class="text-xs text-secondary">Indirizzo</div><div class="font-medium">${[u.indirizzo, u.cap && u.citta ? `${u.cap} ${u.citta}` : (u.cap || u.citta), u.provincia ? `(${u.provincia})` : ''].filter(Boolean).join(', ') || '-'}</div></div>
+              <div><div class="text-xs text-secondary">Codice Fiscale</div><div class="font-medium">${u.codice_fiscale || '-'}</div></div>
+              <div><div class="text-xs text-secondary">Partita IVA</div><div class="font-medium">${u.partita_iva || '-'}</div></div>
               <div><div class="text-xs text-secondary">Iscrizione</div><div class="font-medium">${u.data_iscrizione ? new Date(u.data_iscrizione).toLocaleDateString('it-IT') : '-'}</div></div>
             </div>
             <h4 style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Partecipazioni (${(stor.partecipazioni || []).length})</h4>${partHtml}

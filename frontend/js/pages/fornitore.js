@@ -130,7 +130,7 @@ function renderFornitoreSezione(sezione) {
       <div style="padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
           <span class="text-sm font-medium">${c.prodotto}</span>
-          <span class="text-xs font-medium">${c.quantita_attuale}/${c.quantita_minima} (${c.percentuale_adesione}%)</span>
+          <span class="text-xs font-medium">${c.quantita_attuale}/${c.quantita_minima} (${Math.min(100, c.percentuale_adesione)}%)</span>
         </div>
         <div style="height:6px;background:var(--color-border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(100, c.percentuale_adesione)}%;background:var(--color-success);border-radius:3px;"></div>
@@ -143,7 +143,7 @@ function renderFornitoreSezione(sezione) {
       ${Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-3);">Proponi prodotto</h3>
         <div id="prop-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
         <form onsubmit="fornitoreInviaProposta(event)" style="display:flex;flex-direction:column;gap:var(--space-2);">
-          <input type="text" name="nome_prodotto" class="input" placeholder="Nome prodotto*" required />
+          <input type="text" name="nome_prodotto" class="input" placeholder="Nome prodotto* (max 80 caratteri)" maxlength="80" required />
           <textarea name="descrizione" class="input" placeholder="Descrizione" rows="2"></textarea>
           <div style="display:flex;gap:var(--space-2);">
             <input type="number" name="moq_richiesto" class="input" placeholder="MOQ*" min="1" required style="flex:1;" />

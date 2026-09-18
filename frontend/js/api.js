@@ -37,7 +37,16 @@ export async function apiRequest(method, url, body = null) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.errore?.messaggio || 'Errore del server');
+      if (data.errore?.codice === 'UTENTE_SOSPESO') {
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-error';
+        toast.innerHTML = `<div class="toast-content"><div class="toast-title">Account sospeso</div><div class="toast-description">${data.errore?.messaggio || ''}</div></div>`;
+        document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+      }
+      const err = new Error(data.errore?.messaggio || 'Errore del server');
+      err.codice = data.errore?.codice;
+      throw err;
     }
 
     return data;

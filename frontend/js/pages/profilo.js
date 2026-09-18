@@ -45,7 +45,12 @@ export async function ProfiloPage() {
                 <div class="input-group"><label class="input-label">Cognome</label><input type="text" name="cognome" class="input" value="${user.cognome || ''}"></div>
                 <div class="input-group"><label class="input-label">Email</label><input type="email" class="input" value="${user.email || ''}" disabled></div>
                 <div class="input-group"><label class="input-label">Telefono</label><input type="tel" name="telefono" class="input" value="${user.telefono || ''}"></div>
-                <div class="input-group full-width"><label class="input-label">Indirizzo</label><input type="text" name="indirizzo" class="input" value="${user.indirizzo || ''}"></div>
+                <div class="input-group full-width"><label class="input-label">Indirizzo (via e civico)</label><input type="text" name="indirizzo" class="input" value="${user.indirizzo || ''}"></div>
+                <div class="input-group"><label class="input-label">CAP</label><input type="text" name="cap" class="input" maxlength="10" value="${user.cap || ''}"></div>
+                <div class="input-group"><label class="input-label">Citta</label><input type="text" name="citta" class="input" maxlength="100" value="${user.citta || ''}"></div>
+                <div class="input-group"><label class="input-label">Provincia (sigla)</label><input type="text" name="provincia" class="input" maxlength="2" style="text-transform:uppercase;" value="${user.provincia || ''}"></div>
+                <div class="input-group"><label class="input-label">Codice Fiscale</label><input type="text" name="codice_fiscale" class="input" maxlength="16" style="text-transform:uppercase;" value="${user.codice_fiscale || ''}"></div>
+                <div class="input-group full-width"><label class="input-label">Partita IVA (opzionale)</label><input type="text" name="partita_iva" class="input" maxlength="11" inputmode="numeric" value="${user.partita_iva || ''}"></div>
                 ${isFornitore && forn ? `
                 <div class="input-group full-width"><label class="input-label">Sito web / catalogo</label><input type="url" name="sito_web" class="input" placeholder="https://..." value="${forn.sito_web || ''}"></div>
                 <div class="input-group full-width"><label class="input-label">Descrizione azienda</label><textarea name="descrizione" class="input" rows="2">${forn.descrizione || ''}</textarea></div>
@@ -101,7 +106,12 @@ export async function ProfiloPage() {
           nome: form.nome.value.trim(),
           cognome: form.cognome.value.trim(),
           telefono: form.telefono.value.trim(),
-          indirizzo: form.indirizzo.value.trim()
+          indirizzo: form.indirizzo.value.trim(),
+          cap: form.cap.value.trim(),
+          citta: form.citta.value.trim(),
+          provincia: form.provincia.value.trim(),
+          codice_fiscale: form.codice_fiscale.value.trim(),
+          partita_iva: form.partita_iva.value.trim()
         });
         if (form.sito_web || form.descrizione) {
           await apiPut('/fornitore/io', {

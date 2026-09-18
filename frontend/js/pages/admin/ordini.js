@@ -95,7 +95,7 @@ async function renderAdminOrdini() {
         }
       }
 
-      const percentuale = c.stato === 'ordine_pronto' ? Math.round((pagati / totali) * 100) : null;
+      const percentuale = c.stato === 'ordine_pronto' ? Math.min(100, Math.round((pagati / totali) * 100)) : null;
 
       ordiniHtml += `
         <div class="card" style="margin-bottom:var(--space-3);">

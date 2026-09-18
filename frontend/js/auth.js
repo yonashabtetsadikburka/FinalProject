@@ -44,6 +44,13 @@ export function isFornitore() {
 }
 
 export function landingPerRuolo(user) {
+  try {
+    const saved = sessionStorage.getItem('postLoginHash');
+    sessionStorage.removeItem('postLoginHash');
+    if (saved && saved.startsWith('/') && !saved.startsWith('/admin') && !saved.startsWith('/fornitore/')) {
+      return 'app.html#' + saved;
+    }
+  } catch (e) {}
   if (user?.ruolo === 'admin') return 'app.html#/admin';
   if (user?.ruolo === 'fornitore') return 'app.html#/fornitore';
   return 'app.html#/';
