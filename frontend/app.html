@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BuyPool</title>
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div id="header-container"></div>
+    <main class="main-content">
+      <div id="content-area"></div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { initSession, getState, subscribe, clearSession } from './js/state.js';
+    import { isAuthenticated, isAdmin, logout } from './js/auth.js';
+    import { apiGet } from './js/api.js';
+    import { Header, handleLogout } from './js/components/header.js';
+    import { ToastProvider } from './js/components/toast.js';
+
+    import { HomePage } from './js/pages/home.js';
+    import { DettaglioPage } from './js/pages/dettaglio.js';
+    import { DashboardPage } from './js/pages/dashboard.js';
+    import { FornitoriPage } from './js/pages/fornitori.js';
+    import { FornitoriDettaglioPage } from './js/pages/fornitori-dettaglio.js';
+    import { WalletPage } from './js/pages/wallet.js';
+    import { PropostePage } from './js/pages/proposte.js';
+    import { NotifichePage } from './js/pages/notifiche.js';
+    import { ProfiloPage } from './js/pages/profilo.js';
+    import { OrdiniPage } from './js/pages/ordini.js';
+    import { PartecipazioniPage } from './js/pages/partecipazioni.js';
+    import { AdminCampagnePage } from './js/pages/admin/campagne.js';
+    import { AdminDashboardPage } from './js/pages/admin/dashboard.js';
+    import { AdminUtentiPage } from './js/pages/admin/utenti.js';
+    import { AdminOrdiniPage } from './js/pages/admin/ordini.js';
+    import { AdminRitiriPage } from './js/pages/admin/ritiri.js';
+    import { AdminNotifichePage } from './js/pages/admin/notifiche.js';
+    import { PagamentoSuccessoPage, PagamentoAnnullatoPage } from './js/pages/pagamento-successo.js';
+
+    window.handleLogout = handleLogout;
+
+    const routes = [
+      { path: '/', component: HomePage, guard: 'auth' },
+      { path: '/campagne/:id', component: DettaglioPage, guard: 'auth' },
+      { path: '/dashboard', component: DashboardPage, guard: 'auth' },
+      { path: '/fornitori', component: FornitoriPage, guard: 'auth' },
+      { path: '/fornitori/:id', component: FornitoriDettaglioPage, guard: 'auth' },
+      { path: '/wallet', component: WalletPage, guard: 'auth' },
+      { path: '/proposte', component: PropostePage, guard: 'auth' },
+      { path: '/notifiche', component: NotifichePage, guard: 'auth' },
+      { path: '/profilo', component: ProfiloPage, guard: 'auth' },
+      { path: '/ordini', component: OrdiniPage, guard: 'auth' },
+      { path: '/partecipazioni', component: PartecipazioniPage, guard: 'auth' },
+      { path: '/admin', component: AdminDashboardPage, guard: 'admin' },
+      { path: '/admin/campagne', component: AdminCampagnePage, guard: 'admin' },
+      { path: '/admin/utenti', component: AdminUtentiPage, guard: 'admin' },
+      { path: '/admin/ordini', component: AdminOrdiniPage, guard: 'admin' },
+      { path: '/admin/ritiri', component: AdminRitiriPage, guard: 'admin' },
+      { path: '/admin/notifiche', component: AdminNotifichePage, guard: 'admin' },
+      { path: '/pagamento/successo', component: PagamentoSuccessoPage, guard: 'auth' },
+      { path: '/pagamento/annullato', component: PagamentoAnnullatoPage, guard: 'auth' },
+    ];
+
+    function renderShell() {
+      const { user } = getState();
+      if (!user) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      document.getElementById('header-container').innerHTML = Header();
+      ToastProvider();
+    }
+
+    function matchRoute(hash) {
+      for (const route of routes) {
+        const paramNames = [];
+        const regexPath = route.path.replace(/:([^/]+)/g, (_, name) => {
+          paramNames.push(name);
+          return '([^/]+)';
+        });
+        const regex = new RegExp(`^${regexPath}$`);
+        const match = hash.match(regex);
+        if (match) {
+          const params = {};
+          paramNames.forEach((name, i) => {
+            params[name] = match[i + 1];
+          });
+          return { route, params };
+        }
+      }
+      return null;
+    }
+
+    function handleRoute() {
+      const { isLoading } = getState();
+      if (isLoading) return;
+
+      const hash = window.location.hash.slice(1) || '/';
+
+      if (!isAuthenticated()) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      renderShell();
+      initDropdowns();
+
+      const result = matchRoute(hash);
+
+      if (!result) {
+        document.getElementById('content-area').innerHTML = `
+          <div class="empty-state">
+            <h2 class="empty-state-title">Pagina non trovata</h2>
+            <a href="#/" class="btn btn-default">Torna alla Home</a>
+          </div>
+        `;
+        return;
+      }
+
+      const { route, params } = result;
+
+      if (route.guard === 'admin' && !isAdmin()) {
+        document.getElementById('content-area').innerHTML = `
+          <div class="empty-state">
+            <svg class="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+            <h2 class="empty-state-title">Accesso non autorizzato</h2>
+            <p class="empty-state-description">Non hai i permessi necessari per accedere a questa pagina.</p>
+            <a href="#/" class="btn btn-default">Torna alla Home</a>
+          </div>
+        `;
+        return;
+      }
+
+      route.component(params);
+    }
+
+    // === Dropdown toggle ===
+    function closeAllDropdowns() {
+      document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+    }
+    function initDropdowns() {
+      document.querySelectorAll('[data-dropdown-toggle]').forEach(trigger => {
+        const targetId = trigger.getAttribute('data-dropdown-toggle');
+        const menu = document.getElementById(targetId)?.querySelector('.dropdown-menu');
+        if (!menu) return;
+        trigger.addEventListener('click', e => {
+          e.stopPropagation();
+          const wasOpen = menu.classList.contains('open');
+          closeAllDropdowns();
+          if (!wasOpen) menu.classList.add('open');
+        });
+      });
+    }
+
+    // === Auto-logout su scadenza sessione ===
+    async function validateSession() {
+      try {
+        await apiGet('/io');
+      } catch {
+        clearSession();
+        window.location.href = 'index.html';
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isAuthenticated()) {
+        validateSession();
+      }
+    });
+
+    window.addEventListener('storage', e => {
+      if (e.key === 'buypool_user' && !e.newValue && isAuthenticated()) {
+        clearSession();
+        window.location.href = 'index.html';
+      }
+    });
+
+    document.addEventListener('click', closeAllDropdowns);
+
+    initSession();
+
+    window.addEventListener('hashchange', handleRoute);
+
+    subscribe(() => {
+      handleRoute();
+    });
+
+    handleRoute();
+  </script>
+</body>
+</html>

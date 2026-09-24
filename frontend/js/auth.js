@@ -1,0 +1,62 @@
+import { apiPost } from './api.js';
+import { saveSession, clearSession, getState } from './state.js';
+
+export async function login(email, password) {
+  const data = await apiPost('/login', { email, password });
+  const user = data.dati;
+  saveSession(user, 'session_' + user.id);
+  return user;
+}
+
+export async function loginWithGoogle(googleToken) {
+  const data = await apiPost('/auth/google', { token: googleToken });
+  const user = data.dati;
+  saveSession(user, 'google_' + user.id);
+  return user;
+}
+
+export async function loginWithMicrosoft(microsoftToken) {
+  const data = await apiPost('/auth/microsoft', { token: microsoftToken });
+  const user = data.dati;
+  saveSession(user, 'microsoft_' + user.id);
+  return user;
+}
+
+export async function register({ nome, cognome, email, password, tipo, privacy }) {
+  const data = await apiPost('/registrazione', { nome, cognome, email, password, tipo, privacy });
+  const user = data.dati;
+  saveSession(user, 'session_' + user.id);
+  return user;
+}
+
+export function logout() {
+  clearSession();
+}
+
+export function isAdmin() {
+  const { user } = getState();
+  return user?.ruolo === 'admin';
+}
+
+export function isFornitore() {
+  const { user } = getState();
+  return user?.ruolo === 'fornitore';
+}
+
+export function landingPerRuolo(user) {
+  try {
+    const saved = sessionStorage.getItem('postLoginHash');
+    sessionStorage.removeItem('postLoginHash');
+    if (saved && saved.startsWith('/') && !saved.startsWith('/admin') && !saved.startsWith('/fornitore/')) {
+      return 'app.html#' + saved;
+    }
+  } catch (e) {}
+  if (user?.ruolo === 'admin') return 'app.html#/admin';
+  if (user?.ruolo === 'fornitore') return 'app.html#/fornitore';
+  return 'app.html#/';
+}
+
+export function isAuthenticated() {
+  const { user } = getState();
+  return user !== null;
+}
