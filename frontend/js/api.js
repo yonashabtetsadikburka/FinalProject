@@ -14,7 +14,9 @@ export async function apiRequest(method, url, body = null) {
 
   const config = {
     method,
-    headers
+    headers,
+    // Dati sempre freschi: mai risposte dalla cache HTTP del browser
+    cache: 'no-store'
   };
 
   if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
@@ -27,7 +29,7 @@ export async function apiRequest(method, url, body = null) {
     if (response.status === 401) {
       // 401 su endpoint auth = credenziali errate, non sessione scaduta: niente redirect
       const isAuthEndpoint = ['/login', '/registrazione', '/auth/'].some(p => url.includes(p));
-      if (!isAuthEndpoint) {
+      if (!isAuthEndpoint && token) {
         clearSession();
         window.location.href = 'index.html';
         throw new Error('Sessione scaduta');
@@ -78,7 +80,7 @@ export async function apiPostForm(url, formData) {
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   try {
-    const response = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body: formData });
+    const response = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body: formData, cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.errore?.messaggio || 'Errore del server');
     return data;

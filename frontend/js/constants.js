@@ -2,7 +2,7 @@ export const API_URL = 'http://localhost:8888/buypool/api';
 
 export const STATI_CAMPAGNA_LABELS = {
   in_corso: 'In Corso',
-  riuscita: 'Soglia Raggiunta',
+  riuscita: 'Obiettivo Raggiunto',
   fallita: 'Fallita',
   ordine_pronto: 'Ordine Confermato',
   ordine_fornitore: 'Ordine al Fornitore',

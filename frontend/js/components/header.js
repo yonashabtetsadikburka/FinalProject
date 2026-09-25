@@ -166,6 +166,49 @@ export function handleLogout() {
   window.location.href = 'index.html';
 }
 
+/** Salva la pagina corrente per tornarci dopo login/registrazione. */
+function salvaRitorno() {
+  try {
+    const rawHash = window.location.hash.slice(1) || '/';
+    sessionStorage.setItem('postLoginHash', rawHash);
+  } catch (e) {}
+}
+
+window.guestAccedi = function() {
+  salvaRitorno();
+  window.location.href = 'index.html#/login';
+};
+
+window.guestRegistrati = function() {
+  salvaRitorno();
+  window.location.href = 'index.html#/register';
+};
+
+const GUEST_ICON = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>';
+
+/** Header minimale per ospiti: solo tab Campagne + Accedi/Registrati. */
+export function GuestHeader() {
+  const hash = window.location.hash.slice(1) || '/';
+  const isActive = hash === '/' || hash.startsWith('/campagne');
+  return `
+    <header class="header">
+      <div class="header-left">
+        <a href="#/" class="header-logo header-logo-desktop">BuyPool</a>
+      </div>
+      <div class="header-center">
+        <a href="#/" class="header-logo header-logo-mobile">BuyPool</a>
+        <nav class="header-nav">
+          <a class="nav-item ${isActive ? 'active' : ''}" href="#/">${GUEST_ICON}<span>Campagne</span></a>
+        </nav>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-ghost btn-sm" onclick="guestAccedi()">Accedi</button>
+        <button class="btn btn-default btn-sm" onclick="guestRegistrati()">Registrati</button>
+      </div>
+    </header>
+  `;
+}
+
 window.handleLogout = handleLogout;
 
 window.openMobileMenu = function() {

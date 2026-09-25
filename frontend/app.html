@@ -19,60 +19,73 @@
     </main>
   </div>
 
+  <script src="./js/lib/qrcode.js"></script>
   <script type="module">
     import { initSession, getState, subscribe, clearSession } from './js/state.js';
     import { isAuthenticated, isAdmin, logout } from './js/auth.js';
     import { apiGet } from './js/api.js';
-    import { Header, handleLogout } from './js/components/header.js';
+    import { Header, GuestHeader, handleLogout, updateNotificationBadge } from './js/components/header.js';
     import { ToastProvider } from './js/components/toast.js';
+    import { clearPageTimers } from './js/page-timers.js';
 
     import { HomePage } from './js/pages/home.js';
     import { DettaglioPage } from './js/pages/dettaglio.js';
     import { DashboardPage } from './js/pages/dashboard.js';
-    import { FornitoriPage } from './js/pages/fornitori.js';
     import { FornitoriDettaglioPage } from './js/pages/fornitori-dettaglio.js';
     import { WalletPage } from './js/pages/wallet.js';
     import { PropostePage } from './js/pages/proposte.js';
     import { NotifichePage } from './js/pages/notifiche.js';
     import { ProfiloPage } from './js/pages/profilo.js';
+    import { PrivacyPage } from './js/pages/privacy.js';
     import { OrdiniPage } from './js/pages/ordini.js';
     import { PartecipazioniPage } from './js/pages/partecipazioni.js';
     import { AdminCampagnePage } from './js/pages/admin/campagne.js';
     import { AdminDashboardPage } from './js/pages/admin/dashboard.js';
     import { AdminUtentiPage } from './js/pages/admin/utenti.js';
+    import { AdminFornitoriPage } from './js/pages/admin/fornitori.js';
+    import { AdminPropostePage } from './js/pages/admin/proposte.js';
     import { AdminOrdiniPage } from './js/pages/admin/ordini.js';
     import { AdminRitiriPage } from './js/pages/admin/ritiri.js';
     import { AdminNotifichePage } from './js/pages/admin/notifiche.js';
     import { PagamentoSuccessoPage, PagamentoAnnullatoPage } from './js/pages/pagamento-successo.js';
+    import { FornitorePage } from './js/pages/fornitore.js';
+
 
     window.handleLogout = handleLogout;
 
     const routes = [
-      { path: '/', component: HomePage, guard: 'auth' },
-      { path: '/campagne/:id', component: DettaglioPage, guard: 'auth' },
+      { path: '/', component: HomePage, guard: 'auth', public: true },
+      { path: '/campagne/:id', component: DettaglioPage, guard: 'auth', public: true },
       { path: '/dashboard', component: DashboardPage, guard: 'auth' },
-      { path: '/fornitori', component: FornitoriPage, guard: 'auth' },
       { path: '/fornitori/:id', component: FornitoriDettaglioPage, guard: 'auth' },
       { path: '/wallet', component: WalletPage, guard: 'auth' },
       { path: '/proposte', component: PropostePage, guard: 'auth' },
       { path: '/notifiche', component: NotifichePage, guard: 'auth' },
+
       { path: '/profilo', component: ProfiloPage, guard: 'auth' },
+      { path: '/privacy', component: () => PrivacyPage(), guard: 'auth' },
       { path: '/ordini', component: OrdiniPage, guard: 'auth' },
       { path: '/partecipazioni', component: PartecipazioniPage, guard: 'auth' },
       { path: '/admin', component: AdminDashboardPage, guard: 'admin' },
       { path: '/admin/campagne', component: AdminCampagnePage, guard: 'admin' },
       { path: '/admin/utenti', component: AdminUtentiPage, guard: 'admin' },
+      { path: '/admin/fornitori', component: AdminFornitoriPage, guard: 'admin' },
+
+      { path: '/admin/proposte', component: AdminPropostePage, guard: 'admin' },
       { path: '/admin/ordini', component: AdminOrdiniPage, guard: 'admin' },
       { path: '/admin/ritiri', component: AdminRitiriPage, guard: 'admin' },
       { path: '/admin/notifiche', component: AdminNotifichePage, guard: 'admin' },
       { path: '/pagamento/successo', component: PagamentoSuccessoPage, guard: 'auth' },
       { path: '/pagamento/annullato', component: PagamentoAnnullatoPage, guard: 'auth' },
+      { path: '/fornitore', component: FornitorePage, guard: 'auth' },
+      { path: '/fornitore/:sezione', component: FornitorePage, guard: 'auth' },
     ];
 
     function renderShell() {
       const { user } = getState();
       if (!user) {
-        window.location.href = 'index.html';
+        document.getElementById('header-container').innerHTML = GuestHeader();
+        ToastProvider();
         return;
       }
 
@@ -104,17 +117,22 @@
       const { isLoading } = getState();
       if (isLoading) return;
 
-      const hash = window.location.hash.slice(1) || '/';
+      const rawHash = window.location.hash.slice(1) || '/';
+      const hash = rawHash.split('?')[0];
 
-      if (!isAuthenticated()) {
+      const result = matchRoute(hash);
+      const guestAllowed = !!result?.route?.public;
+
+      if (!isAuthenticated() && !guestAllowed) {
+        try { sessionStorage.setItem('postLoginHash', rawHash); } catch (e) {}
         window.location.href = 'index.html';
         return;
       }
 
       renderShell();
       initDropdowns();
-
-      const result = matchRoute(hash);
+      if (isAuthenticated()) updateNotificationBadge();
+      clearPageTimers();
 
       if (!result) {
         document.getElementById('content-area').innerHTML = `
@@ -163,8 +181,9 @@
       });
     }
 
-    // === Auto-logout su scadenza sessione ===
+    // === Auto-logout su scadenza sessione (solo se loggati) ===
     async function validateSession() {
+      if (!isAuthenticated()) return;
       try {
         await apiGet('/io');
       } catch {
