@@ -1,8 +1,7 @@
 import { apiGet } from '../api.js';
 import { API_URL } from '../constants.js';
 import { Progress } from '../components/progress.js';
-import { Badge } from '../components/badge.js';
-import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES } from '../constants.js';
+import { startCountdowns, formatCountdown } from '../countdown.js';
 
 function imgUrl(path) {
   if (!path) return '';
@@ -36,11 +35,8 @@ function campaignCardHtml(c) {
   const base = parseFloat(c.prezzo_base) || 0;
   const curr = parseFloat(c.prezzo_corrente) || 0;
   const discount = base > 0 ? Math.round((1 - curr / base) * 100) : 0;
-  const deadline = new Date(c.data_limite);
-  const now = new Date();
-  const daysLeft = Math.max(0, Math.ceil((deadline - now) / (1000 * 60 * 60 * 24)));
-  const scadenzaTxt = deadline.toLocaleDateString('it-IT') + ' ore ' + deadline.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   const pubblicataTxt = c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : null;
+  const conclusa = isConclusa(c);
 
   const imgs = (c.immagini && c.immagini.length ? c.immagini.map(i => i.url) : (c.immagine ? [c.immagine] : []));
   cardImgs[c.id] = imgs;
@@ -60,33 +56,30 @@ function campaignCardHtml(c) {
     <div class="card campaign-card" onclick="window.location.hash='#/campagne/${c.id}'">
       ${imgBlock}
       <div class="campaign-card-body">
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-2);">
-          <div class="campaign-card-title">${c.prodotto || 'Prodotto'}</div>
-          ${discount > 0 ? `<span class="discount-badge">-${discount}%</span>` : ''}
-        </div>
-        <div class="campaign-card-supplier">${c.fornitore || 'Fornitore'}${pubblicataTxt ? ` &middot; Pubblicata il ${pubblicataTxt}` : ''}</div>
+        <div class="campaign-card-title">${c.prodotto || 'Prodotto'}</div>
+        ${discount > 0 ? `<div style="margin-bottom: var(--space-2);"><span class="discount-badge">-${discount}% di sconto</span></div>` : ''}
+        <div class="campaign-card-supplier">${c.fornitore || 'Fornitore'}</div>
         <div class="campaign-card-progress">
           <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-1);">
-            <span class="text-xs text-secondary">${qty} / ${min} pezzi</span>
+            <span class="text-xs text-secondary">Obiettivo (${qty}/${min})</span>
             <span class="text-xs font-medium">${percentage}%</span>
           </div>
           ${Progress({ value: qty, max: min })}
         </div>
-        <div class="campaign-card-meta">
-          <div>
-            <div class="countdown">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              ${daysLeft} giorni rimanenti
-            </div>
-            <div class="text-xs text-secondary" style="margin-top:2px;">Scade: ${scadenzaTxt}</div>
-          </div>
-          ${Badge({ variant: STATI_CAMPAGNA_BADGES[c.stato] || 'secondary', children: STATI_CAMPAGNA_LABELS[c.stato] || c.stato })}
+        <div class="countdown countdown-row" style="margin-bottom: var(--space-3);">
+          ${pubblicataTxt ? `<span class="text-sm pub-date">Pubblicata ${pubblicataTxt}</span>` : ''}
+          <span class="countdown-right">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            ${conclusa
+              ? '<span>Terminata</span>'
+              : `<span class="text-sm">Scade tra&nbsp;</span><span class="countdown-live" data-scadenza="${c.data_limite || ''}">${formatCountdown(c.data_limite) || '—'}</span>`}
+          </span>
         </div>
         <div class="campaign-card-price">
           <span class="price-current">&euro;${curr.toFixed(2)}</span>
           <span class="price-original">&euro;${base.toFixed(2)}</span>
-          <button class="btn btn-default btn-sm" style="margin-left:auto;" onclick="event.stopPropagation();window.location.hash='#/campagne/${c.id}'">Partecipa</button>
         </div>
+        <button class="btn ${conclusa ? 'btn-secondary' : 'btn-default'} w-full" style="margin-top: var(--space-3);" ${conclusa ? 'disabled' : `onclick="event.stopPropagation();window.location.hash='#/campagne/${c.id}'"`}>${conclusa ? 'Conclusa' : 'Prenota'}</button>
       </div>
     </div>
   `;
@@ -153,6 +146,29 @@ window.cardCarousel = function(cid, dir, event) {
 
 
 
+function howItWorksHtml() {
+  const steps = [
+    { label: 'Partecipa', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
+    { label: 'Obiettivo raggiunto', icon: '<circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>' },
+    { label: 'Paghi', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>' },
+    { label: 'Ordine inviato', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="17.5" r="1.8" stroke-width="2"/><circle cx="17" cy="17.5" r="1.8" stroke-width="2"/>' },
+    { label: 'Ritira il pacco', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>' }
+  ];
+  return `
+    <section class="how-section" aria-label="Come funziona">
+      <h2 class="how-title">Insieme si risparmia di più.</h2>
+      <p class="how-sub">Unisciti insieme ad altri per raggiungere il prezzo all'ingrosso.</p>
+      <ol class="how-steps">
+        ${steps.map(s => `
+        <li class="how-step">
+          <span class="how-circle"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">${s.icon}</svg></span>
+          <span class="how-label">${s.label}</span>
+        </li>`).join('')}
+      </ol>
+      <hr class="how-divider" />
+    </section>`;
+}
+
 export async function HomePage() {
   const content = document.getElementById('content-area') || document.querySelector('.main-content');
   if (!content) return;
@@ -186,6 +202,7 @@ export async function HomePage() {
 
     content.innerHTML = `
       <div class="content-area">
+        ${howItWorksHtml()}
         <div class="search-filter-bar campagne-filter-bar">
           <div class="search-input-wrapper campagne-search">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -206,6 +223,13 @@ export async function HomePage() {
       </div>
     `;
     homeFiltraCampagne();
+    let homeExpireHandled = false;
+    startCountdowns(() => {
+      if (!homeExpireHandled && [...document.querySelectorAll('.countdown-live')].some(el => el.textContent === 'Terminata')) {
+        homeExpireHandled = true;
+        homeFiltraCampagne();
+      }
+    });
   } catch (err) {
     content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore di caricamento</h2><p class="text-secondary">${err.message}</p></div></div>`;
   }

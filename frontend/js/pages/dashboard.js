@@ -91,7 +91,7 @@ export async function DashboardPage() {
         </div>`),
       ...quasiMoq.map(p => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
-          <div><div class="text-sm font-medium">${p.prodotto}</div><div class="text-xs text-secondary">Manca poco al MOQ (${p.quantita_attuale}/${p.quantita_minima})</div></div>
+          <div><div class="text-sm font-medium">${p.prodotto}</div><div class="text-xs text-secondary">Manca poco all'obiettivo (${p.quantita_attuale}/${p.quantita_minima})</div></div>
           <a href="#/campagne/${p.id_colletta}" class="btn btn-ghost btn-sm">Vedi</a>
         </div>`)
     ].join('');

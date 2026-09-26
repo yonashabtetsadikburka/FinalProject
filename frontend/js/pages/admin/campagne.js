@@ -10,6 +10,39 @@ import { Table } from '../../components/table.js';
 import { Badge } from '../../components/badge.js';
 import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES, STATI_PRENOTAZIONE_LABELS, STATI_PRENOTAZIONE_BADGES } from '../../constants.js';
 
+window.campAggiungiScaglione = function(wrapId, soglia = '', prezzo = '') {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const div = document.createElement('div');
+  div.className = 'scaglione-row';
+  div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
+  div.innerHTML = `
+    <input type="number" name="soglia" placeholder="Soglia pezzi" min="1" step="1" value="${soglia}" style="flex:1;" />
+    <input type="number" name="prezzo" placeholder="Prezzo &euro;" min="0.01" step="0.01" value="${prezzo}" style="flex:1;" />
+    <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">&#10005;</button>`;
+  wrap.appendChild(div);
+};
+
+function campLeggiScaglioni(wrapId) {
+  const out = [];
+  for (const r of document.querySelectorAll(`#${wrapId} .scaglione-row`)) {
+    const sRaw = (r.querySelector('[name=soglia]').value || '').trim();
+    const pRaw = (r.querySelector('[name=prezzo]').value || '').trim();
+    if (!sRaw && !pRaw) continue;
+    const soglia = parseInt(sRaw);
+    const prezzo = parseFloat(pRaw);
+    if (!Number.isFinite(soglia) || soglia < 1 || !Number.isFinite(prezzo) || prezzo <= 0) {
+      throw new Error('Scaglioni non validi: inserisci soglia (min 1) e prezzo (> 0) in ogni riga.');
+    }
+    out.push({ soglia, prezzo });
+  }
+  const soglie = out.map(s => s.soglia);
+  if (new Set(soglie).size !== soglie.length) {
+    throw new Error('Scaglioni non validi: soglie duplicate.');
+  }
+  return out;
+}
+
 window.showCampagnaDettaglio = async function(campagnaId) {
   try {
     const res = await apiGet(`/campagne/${campagnaId}`);
@@ -46,6 +79,7 @@ window.showCampagnaDettaglio = async function(campagnaId) {
               <div><div class="text-xs text-secondary">Scadenza</div><div class="font-medium">${c.data_limite ? (new Date(c.data_limite).toLocaleDateString('it-IT') + ' ore ' + new Date(c.data_limite).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })) : '-'}</div></div>
               <div><div class="text-xs text-secondary">Pubblicata il</div><div class="font-medium">${c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : '-'}</div></div>
               <div><div class="text-xs text-secondary">Partecipanti</div><div class="font-medium">${c.partecipanti || partecipazioni.length}</div></div>
+              <div><div class="text-xs text-secondary">Scaglioni</div><div class="font-medium">${(c.scaglioni || []).length ? c.scaglioni.map(s => `${s.soglia}pz &middot; &euro;${parseFloat(s.prezzo).toFixed(2)}`).join(' | ') : '-'}</div></div>
             </div>
             <h4 style="font-size:var(--text-base);font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Aderenti (${partecipazioni.length})</h4>
             ${aderentiHtml}
@@ -96,6 +130,14 @@ window.modificaCampagna = async function(campagnaId) {
       </div>`).join('')
       : '<p class="text-sm text-secondary">Nessun aderente.</p>';
 
+    const haAderenti = partecipazioni.length > 0;
+    const scaglioniRowsHtml = (Array.isArray(c.scaglioni) ? c.scaglioni : []).map(s => `
+      <div class="scaglione-row" style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="number" name="soglia" placeholder="Soglia pezzi" min="1" step="1" value="${s.soglia}" ${haAderenti ? 'disabled' : ''} style="flex:1;" />
+        <input type="number" name="prezzo" placeholder="Prezzo &euro;" min="0.01" step="0.01" value="${s.prezzo}" ${haAderenti ? 'disabled' : ''} style="flex:1;" />
+        ${haAderenti ? '' : `<button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">&#10005;</button>`}
+      </div>`).join('');
+
     const modalHtml = `
       <div id="modifica-campagna-modal" class="modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--space-4);">
         <div class="modal-content card" style="max-width:640px;width:100%;max-height:90vh;overflow-y:auto;">
@@ -125,6 +167,12 @@ window.modificaCampagna = async function(campagnaId) {
               <label class="text-sm">Prezzo corrente (&euro;)<input type="number" name="prezzo_corrente" min="0.01" step="0.01" value="${c.prezzo_corrente}" required style="width:100%;" /></label>
               <label class="text-sm">Prezzo base (&euro;)<input type="number" name="prezzo_base" min="0.01" step="0.01" value="${c.prezzo_base}" required style="width:100%;" /></label>
               <label class="text-sm">Commissione (%)<input type="number" name="percentuale_commissione" min="0" max="100" step="0.01" value="${c.percentuale_commissione}" required style="width:100%;" /></label>
+              <div class="text-sm" style="grid-column:1/-1;">
+                <div class="font-medium" style="margin-bottom:4px;">Scaglioni prezzo</div>
+                ${haAderenti ? '<p class="text-xs text-secondary" style="margin-bottom:4px;">Non modificabili: la campagna ha gi&agrave; aderenti.</p>' : ''}
+                <div id="mod-scaglioni-wrap">${scaglioniRowsHtml}</div>
+                ${haAderenti ? '' : `<button type="button" class="btn btn-ghost btn-sm" onclick="campAggiungiScaglione('mod-scaglioni-wrap')">+ Aggiungi scaglione</button>`}
+              </div>
               <div style="grid-column:1/-1;display:flex;gap:var(--space-2);">
                 <button type="submit" class="btn btn-default w-full">Salva</button>
                 <button type="button" class="btn btn-outline w-full" onclick="document.getElementById('modifica-campagna-modal').remove()">Annulla</button>
@@ -182,6 +230,10 @@ window.salvaCampagna = async function(e, campagnaId) {
     fd.append('prezzo_corrente', f.prezzo_corrente.value);
     fd.append('prezzo_base', f.prezzo_base.value);
     fd.append('percentuale_commissione', f.percentuale_commissione.value);
+    const modWrap = document.getElementById('mod-scaglioni-wrap');
+    if (modWrap && modWrap.querySelector('input:not([disabled])')) {
+      fd.append('scaglioni', JSON.stringify(campLeggiScaglioni('mod-scaglioni-wrap')));
+    }
     const fotoInput = f.querySelector('input[name="foto"]');
     if (fotoInput && fotoInput.files[0]) {
       fd.append('foto', fotoInput.files[0]);
@@ -229,6 +281,11 @@ window.nuovaCampagna = async function() {
                 <div id="foto-selezionate" class="text-xs text-secondary" style="margin-top:4px;">Nessun file selezionato</div>
               </div>
               <label class="text-sm" style="grid-column:1/-1;">Descrizione<textarea name="descrizione" rows="2" style="width:100%;"></textarea></label>
+              <div class="text-sm" style="grid-column:1/-1;">
+                <div class="font-medium" style="margin-bottom:4px;">Scaglioni prezzo (opzionali)</div>
+                <div id="nuovi-scaglioni-wrap"></div>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="campAggiungiScaglione('nuovi-scaglioni-wrap')">+ Aggiungi scaglione</button>
+              </div>
               <div style="grid-column:1/-1;display:flex;gap:var(--space-2);">
                 <button type="submit" class="btn btn-default w-full">Crea campagna</button>
                 <button type="button" class="btn btn-outline w-full" onclick="document.getElementById('nuova-campagna-modal').remove()">Annulla</button>
@@ -268,6 +325,8 @@ window.creaCampagna = async function(e) {
     fd.append('percentuale_commissione', f.percentuale_commissione.value);
     fd.append('scadenza', f.scadenza.value);
     fd.append('descrizione', f.descrizione.value.trim());
+    const nuoviScag = campLeggiScaglioni('nuovi-scaglioni-wrap');
+    if (nuoviScag.length > 0) fd.append('scaglioni', JSON.stringify(nuoviScag));
     for (const file of f.foto.files) fd.append('foto[]', file);
     await apiPostForm('/campagne', fd);
     document.getElementById('nuova-campagna-modal')?.remove();

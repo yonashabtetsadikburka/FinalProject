@@ -45,7 +45,7 @@ export async function FornitoriDettaglioPage(params) {
       <div style="display: flex; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border);">
         <div>
           <div class="font-medium">${p.nome}</div>
-          <div class="text-sm text-secondary">MOQ: ${p.quantita_minima} pezzi</div>
+          <div class="text-sm text-secondary">Obiettivo: ${p.quantita_minima} pezzi</div>
         </div>
         <div class="font-bold">&euro;${parseFloat(p.prezzo_unitario).toFixed(2)}</div>
       </div>
