@@ -1,0 +1,14 @@
+# URL puliti: tutto passa da index.php
+RewriteEngine On
+
+# Apache toglie l'header Authorization se non lo si passa esplicitamente
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Codice interno, configurazione (con le password) e dipendenze non si servono mai
+RedirectMatch 404 /api/(lib|endpoints|vendor)(/|$)
+RedirectMatch 404 /api/(config\.php|config\.example\.php|composer\.json|composer\.lock)$

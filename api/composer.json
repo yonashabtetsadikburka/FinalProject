@@ -1,0 +1,14 @@
+{
+    "name": "buypool/api",
+    "description": "BuyPool - API REST (PHP + MySQL)",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-openssl": "*",
+        "google/apiclient": "^2.15",
+        "stripe/stripe-php": "^17.0",
+        "firebase/php-jwt": "^6.10"
+    },
+    "config": { "sort-packages": true, "optimize-autoloader": true }
+}

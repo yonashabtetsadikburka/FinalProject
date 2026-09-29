@@ -1,0 +1,3 @@
+# Se questa cartella e' servita da Apache (es. MAMP), gli script da riga di
+# comando e gli schemi non devono essere raggiungibili dal web.
+RedirectMatch 404 /(database|tests)(/|$)

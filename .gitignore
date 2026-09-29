@@ -1,19 +1,22 @@
+# credenziali - MAI committare
+api/config.php
+.env
+.env.*
+!.env.example
+
 # dipendenze
 vendor/
 node_modules/
 
-# ambiente
-.env
+# file caricati dagli utenti
+api/uploads/*
+!api/uploads/.gitkeep
 
-# sistema
+# sistema / editor
 .DS_Store
 Thumbs.db
 *.log
-
-# editor
 .vscode/
 .idea/
 *.swp
-
-# database locali
 *.sqlite
