@@ -164,7 +164,7 @@ window.modificaCampagna = async function(campagnaId) {
               </label>
               <label class="text-sm">Scadenza<input type="datetime-local" name="data_limite" value="${scadenza}" required style="width:100%;" /></label>
               <label class="text-sm">MOQ<input type="number" name="quantita_minima" min="1" value="${c.quantita_minima}" required style="width:100%;" /></label>
-              <label class="text-sm">Prezzo corrente (&euro;)<input type="number" name="prezzo_corrente" min="0.01" step="0.01" value="${c.prezzo_corrente}" required style="width:100%;" /></label>
+              <label class="text-sm">Prezzo di partenza (&euro;)<input type="number" name="prezzo_corrente" min="0.01" step="0.01" value="${c.prezzo_iniziale ?? c.prezzo_corrente}" required style="width:100%;" /></label>
               <label class="text-sm">Prezzo base (&euro;)<input type="number" name="prezzo_base" min="0.01" step="0.01" value="${c.prezzo_base}" required style="width:100%;" /></label>
               <label class="text-sm">Commissione (%)<input type="number" name="percentuale_commissione" min="0" max="100" step="0.01" value="${c.percentuale_commissione}" required style="width:100%;" /></label>
               <div class="text-sm" style="grid-column:1/-1;">

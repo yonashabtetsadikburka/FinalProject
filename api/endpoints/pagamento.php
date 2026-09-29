@@ -132,6 +132,34 @@ function pagamento_checkout(): void
 }
 
 /**
+ * Importi di un pagamento, ricalcolati dal database.
+ *
+ * Cliente paga:  pezzi (quantita' x prezzo congelato) + commissione + eventuale spedizione.
+ * La COMMISSIONE dell'agenzia e' la percentuale sui soli pezzi: calcolarla sul totale che
+ * il cliente ha versato (che contiene gia' la commissione) la farebbe risultare troppo alta.
+ * Il totale e' quello realmente addebitato (importo_saldo, scritto al checkout); se manca si
+ * ricostruisce con le stesse regole del checkout.
+ *
+ * @param array $pren  riga con quantita, prezzo_corrente, percentuale_commissione, importo_saldo
+ * @return array [totale, commissione]
+ */
+function pagamento_importi(PDO $pdo, int $prenotazione_id, array $pren): array
+{
+    $pezzi = round((int)$pren['quantita'] * (float)$pren['prezzo_corrente'], 2);
+    $commissione = round($pezzi * (float)$pren['percentuale_commissione'] / 100, 2);
+
+    if ($pren['importo_saldo'] !== null) {
+        return [round((float)$pren['importo_saldo'], 2), $commissione];
+    }
+    $st = $pdo->prepare(
+        "SELECT importo_consegna FROM consegne WHERE id_prenotazione = ? AND modalita = 'consegna_domicilio'"
+    );
+    $st->execute([$prenotazione_id]);
+    $spedizione = round((float)($st->fetchColumn() ?: 0), 2);
+    return [round($pezzi + $commissione + $spedizione, 2), $commissione];
+}
+
+/**
  * Webhook Stripe — idempotente via eventi_stripe.
  * POST /pagamento/webhook
  */
@@ -212,7 +240,7 @@ function pagamento_webhook(): void
             // Verifica prenotazione
             $st = $pdo->prepare(
                 'SELECT p.id, p.stato, p.importo_saldo, p.quantita,
-                        c.percentuale_commissione
+                        c.prezzo_corrente, c.percentuale_commissione
                    FROM prenotazioni p
                    JOIN collette c ON c.id = p.id_colletta
                   WHERE p.id = ? FOR UPDATE'
@@ -235,9 +263,7 @@ function pagamento_webhook(): void
                 exit;
             }
 
-            $importo = (float)($pren['importo_saldo'] ?? 0);
-            $commesso_pct = (float)$pren['percentuale_commissione'];
-            $commissione = round($importo * $commesso_pct / 100, 2);
+            [$importo, $commissione] = pagamento_importi($pdo, $prenotazione_id, $pren);
 
             // Registra pagamento
             $stripe_payment_intent_id = $session->payment_intent ?? null;
@@ -395,7 +421,7 @@ function pagamento_stato(): void
                     // Fallback: webhook mancato, aggiorna manualmente
                     $stPren = $pdo->prepare(
                         'SELECT p.id, p.id_colletta, p.id_utente, p.quantita, p.importo_saldo,
-                                c.percentuale_commissione, pr.nome AS nome_prodotto
+                                c.prezzo_corrente, c.percentuale_commissione, pr.nome AS nome_prodotto
                            FROM prenotazioni p
                            JOIN collette c ON c.id = p.id_colletta
                            JOIN prodotti pr ON pr.id = c.id_prodotto
@@ -405,9 +431,7 @@ function pagamento_stato(): void
                     $dettagli = $stPren->fetch();
 
                     if ($dettagli) {
-                        $importo = (float)$dettagli['importo_saldo'];
-                        $commissione_pct = (float)$dettagli['percentuale_commissione'];
-                        $commissione = round($importo * $commissione_pct / 100, 2);
+                        [$importo, $commissione] = pagamento_importi($pdo, $prenotazione_id, $dettagli);
                         $colletta_id = (int)$dettagli['id_colletta'];
                         $utente_id = (int)$dettagli['id_utente'];
 

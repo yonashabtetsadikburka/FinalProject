@@ -112,11 +112,12 @@ function assegnazioni_ripartisci(int $colletta_id): void
 }
 
 /**
- * Elenco delle assegnazioni (QR) di una campagna.
+ * Elenco delle assegnazioni (QR) di una campagna. SOLO ADMIN: contiene i token dei QR,
+ * cioe' il "biglietto" per ritirare la merce di ciascun partecipante.
  */
 function assegnazioni_elenco(int $colletta_id): void
 {
-    richiedi_login();
+    richiedi_admin('Solo gli admin');
 
     $st = db()->prepare(
         'SELECT qr.id, qr.quantita_assegnata, qr.stato, qr.token,

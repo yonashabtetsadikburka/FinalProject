@@ -259,7 +259,7 @@ function renderDettaglio() {
   const scaglioniHtml = scaglioni.length > 0 ? `
     <div class="scaglioni-box">
       ${scaglioni.map((s, i) => `
-        <div class="scaglione${i === scaglioneAttivo ? ' scaglione-attivo' : ''}">.
+        <div class="scaglione${i === scaglioneAttivo ? ' scaglione-attivo' : ''}">
           <div class="scaglione-soglia">${s.soglia} pezzi</div>
           <div class="scaglione-prezzo">&euro;${s.prezzo.toFixed(2)}</div>
         </div>`).join('')}

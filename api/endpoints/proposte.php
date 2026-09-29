@@ -287,10 +287,10 @@ function proposte_auto_crea(array $p, int $admin_id, ?int $fornitore_param, arra
 
     $st = $pdo->prepare(
         'INSERT INTO collette (id_prodotto, id_aperta_da, id_referente, quantita_minima, quantita_attuale,
-                               data_limite, stato, prezzo_base, prezzo_corrente, percentuale_commissione)
-         VALUES (?,?,?, ?, 0, ?, \'in_corso\', ?, ?, ?)'
+                               data_limite, stato, prezzo_base, prezzo_iniziale, prezzo_corrente, percentuale_commissione)
+         VALUES (?,?,?, ?, 0, ?, \'in_corso\', ?, ?, ?, ?)'
     );
-    $st->execute([$id_prodotto, $admin_id, $admin_id, $moq, $scadenza, $prezzo, $prezzo_corrente, $commissione]);
+    $st->execute([$id_prodotto, $admin_id, $admin_id, $moq, $scadenza, $prezzo, $prezzo_corrente, $prezzo_corrente, $commissione]);
     $id_colletta = (int)$pdo->lastInsertId();
 
     if (!empty($scaglioni)) {

@@ -27,6 +27,11 @@ function partecipazioni_aderisci(int $colletta_id): void
         throw new AppError('GIA_PARTECIPI', 'Hai gia\' partecipato a questa campagna', 409);
     }
 
+    // Prezzo al pezzo prima dell'adesione: serve a capire se questa sblocca uno scaglione.
+    $st = db()->prepare('SELECT prezzo_corrente FROM collette WHERE id = ?');
+    $st->execute([$colletta_id]);
+    $prezzoPrima = (float)$st->fetchColumn();
+
     // Crea prenotazione SENZA acconto
     $st = db()->prepare(
         'INSERT INTO prenotazioni (id_colletta, id_utente, quantita, importo_acconto, stato)
@@ -38,8 +43,28 @@ function partecipazioni_aderisci(int $colletta_id): void
     $st = db()->prepare('UPDATE collette SET quantita_attuale = quantita_attuale + ? WHERE id = ?');
     $st->execute([$quantita, $colletta_id]);
 
-    // Ricalcola stato
+    // Ricalcola stato (e, finche' la campagna e' aperta, anche il prezzo dagli scaglioni)
     $nuovoStato = ricalcola_stato($colletta_id);
+
+    // Se questa adesione ha sbloccato uno scaglione il prezzo e' sceso: lo si dice a tutti i partecipanti.
+    $st = db()->prepare(
+        'SELECT c.prezzo_corrente, pr.nome FROM collette c JOIN prodotti pr ON pr.id = c.id_prodotto WHERE c.id = ?'
+    );
+    $st->execute([$colletta_id]);
+    $dopo = $st->fetch();
+    if ($dopo && (float)$dopo['prezzo_corrente'] < $prezzoPrima - 0.004) {
+        $stUt = db()->prepare('SELECT DISTINCT id_utente FROM prenotazioni WHERE id_colletta = ?');
+        $stUt->execute([$colletta_id]);
+        $stSc = db()->prepare(
+            'INSERT INTO notifiche (id_utente, tipo, titolo, messaggio, tipo_riferimento, id_riferimento)
+             VALUES (?, \'NUOVO_SCAGLIONE\', \'Prezzo sceso!\', ?, \'colletta\', ?)'
+        );
+        $msgSc = 'Con questa adesione il prezzo di "' . $dopo['nome'] . '" scende a EUR '
+               . number_format((float)$dopo['prezzo_corrente'], 2, ',', '.') . ' al pezzo.';
+        foreach ($stUt->fetchAll(PDO::FETCH_COLUMN) as $uid) {
+            $stSc->execute([(int)$uid, $msgSc, $colletta_id]);
+        }
+    }
 
     // Se la soglia e' appena stata raggiunta, notifica tutti i partecipanti
     if ($statoPrima === 'in_corso' && $nuovoStato === 'riuscita') {

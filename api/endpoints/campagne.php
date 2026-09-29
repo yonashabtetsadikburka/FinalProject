@@ -9,7 +9,7 @@ function sql_collette(): string
 {
     return
     'SELECT c.id, c.stato, c.data_limite, c.data_inizio, c.quantita_minima, c.quantita_attuale,
-            c.regola_arrotondamento, c.prezzo_base, c.prezzo_corrente,
+            c.regola_arrotondamento, c.prezzo_base, c.prezzo_iniziale, c.prezzo_corrente,
             c.percentuale_commissione, c.data_conferma,
             c.id_prodotto, c.id_aperta_da, c.id_referente, c.id_sede,
             pr.nome AS prodotto, pr.descrizione AS descrizione_prodotto,
@@ -37,9 +37,13 @@ function normalizza_colletta(array $r): array
               'id_sede','fornitore_id','lotto_prodotto','id_categoria'] as $k) {
         if (isset($r[$k])) $r[$k] = (int)$r[$k];
     }
-    foreach (['prezzo_base','prezzo_corrente','percentuale_commissione',
+    foreach (['prezzo_base','prezzo_iniziale','prezzo_corrente','percentuale_commissione',
               'prezzo_unitario'] as $k) {
         if (isset($r[$k])) $r[$k] = (float)$r[$k];
+    }
+    // Campagne nate prima degli scaglioni: il prezzo di partenza e' quello corrente.
+    if (array_key_exists('prezzo_iniziale', $r) && $r['prezzo_iniziale'] === null && isset($r['prezzo_corrente'])) {
+        $r['prezzo_iniziale'] = $r['prezzo_corrente'];
     }
     $r['soglia_raggiunta'] = $r['quantita_attuale'] >= $r['quantita_minima'];
     // Decodifica array immagini (JSON da GROUP_CONCAT); fallback a [immagine]
@@ -65,17 +69,20 @@ function normalizza_colletta(array $r): array
 function campagne_elenco(): void
 {
     richiedi_login();
+    // Prima si riallineano stato e prezzo di ogni campagna, poi si legge: cosi' la
+    // risposta non e' mai vecchia di una richiesta.
+    foreach (db()->query('SELECT id FROM collette')->fetchAll(PDO::FETCH_COLUMN) as $idc) {
+        ricalcola_stato((int)$idc);
+    }
     db()->exec('SET SESSION group_concat_max_len = 100000');
     $st = db()->query(sql_collette() . ' GROUP BY c.id ORDER BY c.data_limite ASC');
-    $out = array_map('normalizza_colletta', $st->fetchAll());
-
-    foreach ($out as &$c) { $c['stato'] = ricalcola_stato($c['id']); }
-    json_ok($out);
+    json_ok(array_map('normalizza_colletta', $st->fetchAll()));
 }
 
 function campagne_dettaglio(int $id): void
 {
     richiedi_login();
+    ricalcola_stato($id);   // stato e prezzo aggiornati prima di leggere (404 se non esiste)
     db()->exec('SET SESSION group_concat_max_len = 100000');
     $st = db()->prepare(sql_collette() . ' WHERE c.id = ? GROUP BY c.id');
     $st->execute([$id]);
@@ -83,7 +90,7 @@ function campagne_dettaglio(int $id): void
     if (!$c) throw new AppError('CAMPAGNA_INESISTENTE', 'Campagna non trovata', 404);
 
     $c = normalizza_colletta($c);
-    $c['stato'] = ricalcola_stato($id);
+    $c['scaglioni'] = scaglioni_colletta(db(), $id);
 
     // Rating fornitore: media + numero recensioni
     $stR = db()->prepare(
@@ -151,6 +158,11 @@ function campagne_dettaglio(int $id): void
             ];
         }
     }
+    // L'elenco completo dei partecipanti (nomi, scelte di consegna) serve solo agli
+    // admin. Agli altri restano il conteggio ("partecipanti") e la propria riga.
+    if (!sono_admin()) {
+        $c['partecipazioni'] = [];
+    }
     json_ok($c);
 }
 
@@ -184,7 +196,9 @@ function campagne_elimina(int $id): void
 
 /**
  * Crea campagna (solo admin). POST /campagne.
- * Accetta multipart (con foto[]) o JSON. Due modalita:
+ * Accetta multipart (con foto[]) o JSON. Campi: scadenza, prezzo_corrente (= prezzo di
+ * partenza), prezzo_base (listino), quantita_minima, percentuale_commissione, sede_id,
+ * scaglioni (lista di {soglia, prezzo}). Due modalita:
  *  - prodotto_id: campagna su prodotto esistente
  *  - nome + id_fornitore + prezzi + moq: crea prodotto + campagna in un colpo
  */
@@ -249,19 +263,24 @@ function campagne_crea(): void
             ? (float)$d['percentuale_commissione'] : 10.0;
         if ($comm < 0 || $comm > 100) throw new AppError('COMMISSIONE_NON_VALIDA', 'Commissione tra 0 e 100');
 
+        // Scaglioni di prezzo (opzionali): stringa JSON nel multipart, array nel JSON.
+        $scaglioni = scaglioni_normalizza($d['scaglioni'] ?? null, round($prezzoCorrC, 2), $moqC);
+
+        // prezzo_corrente parte uguale al prezzo di partenza: si abbassa da solo agli scaglioni.
         $st = $pdo->prepare(
             'INSERT INTO collette
                (id_prodotto, id_aperta_da, id_referente, id_sede,
-                quantita_minima, data_limite, prezzo_base, prezzo_corrente, percentuale_commissione)
-             VALUES (?,?,?,?,?,?,?,?,?)');
+                quantita_minima, data_limite, prezzo_base, prezzo_iniziale, prezzo_corrente, percentuale_commissione)
+             VALUES (?,?,?,?,?,?,?,?,?,?)');
         $st->execute([
             $prodotto_id, $io, $io,
             isset($d['sede_id']) && $d['sede_id'] !== '' ? (int)$d['sede_id'] : null,
             $moqC,
             date('Y-m-d H:i:s', $ts),
-            round($prezzoBaseC, 2), round($prezzoCorrC, 2), round($comm, 2),
+            round($prezzoBaseC, 2), round($prezzoCorrC, 2), round($prezzoCorrC, 2), round($comm, 2),
         ]);
         $id = (int)$pdo->lastInsertId();
+        scaglioni_sostituisci($pdo, $id, $scaglioni);
 
         // Foto opzionali (foto[] multiplo): prima come principale
         $files = [];
@@ -441,8 +460,14 @@ function invia_ordine_fornitore_al(int $colletta_id, ?int $id_admin): array
 /**
  * Modifica una campagna (solo admin). POST /campagne/{id}/modifica.
  * Accetta JSON o multipart (per upload foto).
- * Campi: data_limite, quantita_minima, prezzo_corrente, prezzo_base, percentuale_commissione, foto (file).
- * Bloccato se ordine gia' partito (ordine_fornitore/consegnata).
+ * Campi: data_limite, quantita_minima, prezzo_corrente, prezzo_base, percentuale_commissione,
+ * scaglioni, foto (file).
+ *  - prezzo_corrente e' il prezzo di PARTENZA (stessa cosa del form di creazione): il prezzo
+ *    "di questo momento" lo calcola il server dagli scaglioni.
+ *  - gli scaglioni si cambiano solo se nessuno ha ancora aderito.
+ *  - con l'ordine confermato (ordine_pronto) prezzi e condizioni sono congelati: chi sta
+ *    pagando non deve vedere la cifra cambiare. Un form rimandato IDENTICO e' accettato.
+ *  - bloccato del tutto se l'ordine e' gia' partito (ordine_fornitore/consegnata).
  */
 function campagne_modifica(int $id): void
 {
@@ -466,7 +491,9 @@ function campagne_modifica(int $id): void
     $pdo->beginTransaction();
     try {
         $st = $pdo->prepare(
-            'SELECT id, stato, id_prodotto, quantita_attuale FROM collette WHERE id = ? FOR UPDATE'
+            'SELECT id, stato, id_prodotto, quantita_attuale, quantita_minima, prezzo_base,
+                    prezzo_iniziale, prezzo_corrente, percentuale_commissione
+               FROM collette WHERE id = ? FOR UPDATE'
         );
         $st->execute([$id]);
         $c = $st->fetch();
@@ -481,6 +508,15 @@ function campagne_modifica(int $id): void
 
         $campi = [];
         $par = [];
+
+        $congelata = ($c['stato'] === 'ordine_pronto');
+        $cambia = fn($nuovo, $vecchio) => abs((float)$nuovo - (float)$vecchio) > 0.0001;
+        $blocco = function () {
+            throw new AppError('CAMPAGNA_NON_MODIFICABILE',
+                'Ordine gia\' confermato: prezzi e condizioni non si possono piu\' cambiare', 409);
+        };
+        $nuovoMoq = null;
+        $nuovoIniziale = null;
 
         if (isset($d['data_limite']) && $d['data_limite'] !== '') {
             $dt = trim((string)$d['data_limite']);
@@ -499,6 +535,8 @@ function campagne_modifica(int $id): void
                 $pdo->rollBack();
                 throw new AppError('MOQ_NON_VALIDO', 'MOQ deve essere almeno 1');
             }
+            if ($congelata && $cambia($moq, $c['quantita_minima'])) $blocco();
+            $nuovoMoq = $moq;
             $campi[] = 'quantita_minima = ?';
             $par[] = $moq;
         }
@@ -509,8 +547,12 @@ function campagne_modifica(int $id): void
                 $pdo->rollBack();
                 throw new AppError('PREZZO_NON_VALIDO', 'Prezzo corrente deve essere maggiore di 0');
             }
-            $campi[] = 'prezzo_corrente = ?';
-            $par[] = round($pc, 2);
+            $inizialeAtt = $c['prezzo_iniziale'] !== null ? (float)$c['prezzo_iniziale'] : (float)$c['prezzo_corrente'];
+            if ($congelata && $cambia($pc, $inizialeAtt)) $blocco();
+            // Si salva il prezzo di PARTENZA; prezzo_corrente lo ricalcola ricalcola_stato() a fine funzione.
+            $nuovoIniziale = round($pc, 2);
+            $campi[] = 'prezzo_iniziale = ?';
+            $par[] = $nuovoIniziale;
         }
 
         if (isset($d['prezzo_base']) && $d['prezzo_base'] !== '') {
@@ -519,6 +561,7 @@ function campagne_modifica(int $id): void
                 $pdo->rollBack();
                 throw new AppError('PREZZO_NON_VALIDO', 'Prezzo base deve essere maggiore di 0');
             }
+            if ($congelata && $cambia($pb, $c['prezzo_base'])) $blocco();
             $campi[] = 'prezzo_base = ?';
             $par[] = round($pb, 2);
         }
@@ -529,8 +572,28 @@ function campagne_modifica(int $id): void
                 $pdo->rollBack();
                 throw new AppError('COMMISSIONE_NON_VALIDA', 'Commissione deve essere tra 0 e 100');
             }
+            if ($congelata && $cambia($comm, $c['percentuale_commissione'])) $blocco();
             $campi[] = 'percentuale_commissione = ?';
             $par[] = round($comm, 2);
+        }
+
+        // Scaglioni: si sostituiscono solo se cambiano davvero (un form rimandato uguale non conta).
+        $scaglioniCambiati = false;
+        if (array_key_exists('scaglioni', $d)) {
+            $inizialeEff = $nuovoIniziale
+                ?? ($c['prezzo_iniziale'] !== null ? (float)$c['prezzo_iniziale'] : (float)$c['prezzo_corrente']);
+            $nuovi = scaglioni_normalizza($d['scaglioni'], $inizialeEff, $nuovoMoq ?? (int)$c['quantita_minima']);
+            if ($nuovi != scaglioni_colletta($pdo, $id)) {
+                if ($congelata) $blocco();
+                $stN = $pdo->prepare('SELECT COUNT(*) FROM prenotazioni WHERE id_colletta = ?');
+                $stN->execute([$id]);
+                if ((int)$stN->fetchColumn() > 0) {
+                    throw new AppError('CAMPAGNA_CON_ADESIONI',
+                        'Gli scaglioni non si possono cambiare: la campagna ha gia\' aderenti', 409);
+                }
+                scaglioni_sostituisci($pdo, $id, $nuovi);
+                $scaglioniCambiati = true;
+            }
         }
 
         if (!empty($campi)) {
@@ -593,7 +656,7 @@ function campagne_modifica(int $id): void
             }
         }
 
-        if (empty($campi) && !$hasFoto && empty($extraFoto)) {
+        if (empty($campi) && !$hasFoto && empty($extraFoto) && !$scaglioniCambiati) {
             $pdo->rollBack();
             throw new AppError('NESSUN_CAMPO', 'Nessun campo da aggiornare');
         }

@@ -44,6 +44,7 @@ CREATE TABLE `collette` (
   `percentuale_commissione` decimal(5,2) NOT NULL DEFAULT '10.00',
   `id_admin_conferma` bigint unsigned DEFAULT NULL,
   `data_conferma` timestamp NULL DEFAULT NULL,
+  `prezzo_iniziale` decimal(10,2) DEFAULT NULL COMMENT "prezzo di partenza: quello valido prima di ogni scaglione",
   PRIMARY KEY (`id`),
   KEY `collette_id_prodotto_foreign` (`id_prodotto`),
   KEY `collette_id_aperta_da_foreign` (`id_aperta_da`),

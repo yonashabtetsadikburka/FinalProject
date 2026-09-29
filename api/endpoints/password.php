@@ -21,7 +21,19 @@ function password_richiesta(): void
         $st = db()->prepare('SELECT id, nome, cognome FROM utenti WHERE email = ?');
         $st->execute([$email]);
         $u = $st->fetch();
+        // Al massimo una segnalazione l'ora per utente: senza, chiunque potrebbe inondare
+        // di notifiche tutti gli admin ripetendo l'email di una vittima.
+        $recente = false;
         if ($u) {
+            $stDup = db()->prepare(
+                "SELECT COUNT(*) FROM notifiche
+                  WHERE tipo = 'SISTEMA' AND titolo = 'Richiesta Reset Password'
+                    AND messaggio LIKE ? AND data_creazione > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+            );
+            $stDup->execute(['%(' . $email . ')%']);
+            $recente = (int)$stDup->fetchColumn() > 0;
+        }
+        if ($u && !$recente) {
             $stAdmin = db()->prepare("SELECT id FROM utenti WHERE ruolo = 'admin'");
             $stAdmin->execute();
             $stNot = db()->prepare(

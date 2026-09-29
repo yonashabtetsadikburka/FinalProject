@@ -370,18 +370,9 @@ function fornitore_proposte_crea(): void
     if ($prezzo_corrente !== null && $prezzo_corrente <= 0) throw new AppError('PREZZO_NON_VALIDO', 'Prezzo attuale non valido');
     $tempi = trim($_POST['tempi_consegna'] ?? '');
 
-    $scaglioni = [];
-    if (!empty($_POST['scaglioni'])) {
-        $dec = json_decode($_POST['scaglioni'], true);
-        if (!is_array($dec)) throw new AppError('SCAGLIONI_NON_VALIDI', 'Formato scaglioni non valido');
-        foreach ($dec as $s) {
-            $soglia = (int)($s['soglia'] ?? 0);
-            $prz = (float)($s['prezzo'] ?? 0);
-            if ($soglia < 1 || $prz <= 0) throw new AppError('SCAGLIONI_NON_VALIDI', 'Ogni scaglione deve avere soglia >= 1 e prezzo > 0');
-            $scaglioni[] = ['soglia' => $soglia, 'prezzo' => round($prz, 2)];
-        }
-        usort($scaglioni, fn($a, $b) => $a['soglia'] <=> $b['soglia']);
-    }
+    // Stesse regole dell'admin (lib/prezzo.php): soglie senza duplicati, prezzi che non salgono,
+    // nessun prezzo sopra quello di partenza, nessuna soglia oltre il MOQ richiesto.
+    $scaglioni = scaglioni_normalizza($_POST['scaglioni'] ?? null, $prezzo_corrente ?? $prezzo, $moq);
 
     $foto_path = null;
     if (!empty($_FILES['foto']) && (($_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE)) {

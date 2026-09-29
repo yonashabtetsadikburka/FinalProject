@@ -47,6 +47,20 @@ nothing was taken from it: see *Security fixes* below for why that matters.
 - **Six fields the pages read were never sent by the API** (product description on the campaign page,
   supplier info, reviewer initial, pickup-point details, trust score, like/campaign flags).
 - Config, scripts and tests are no longer downloadable over the web; the upload folder cannot run code.
+- **Any customer could read every participant's QR pickup token** (`GET /campagne/{id}/assegnazioni`),
+  and so collect someone else's goods. Admin only now; the campaign page also stopped listing other
+  people's names and delivery choices to customers.
+- **A demoted or deleted admin kept their powers until they logged out**, because the role was cached
+  in the session. Role and status are now read from the database on every request, so changes apply at once.
+- **Price tiers never did anything.** They were stored but never applied, never sent to the page, and
+  the tiers typed into the admin forms were silently dropped. Now the price follows the tiers as people
+  join or withdraw (ported from the Laravel version and completed), it freezes once the admin confirms the
+  order, participants are notified when a tier unlocks, and the admin forms create and edit tiers.
+- **The agency's commission was recorded ~10% too high** (calculated on a total that already included it).
+- Smaller: the wallet's "this month" figure was always the all-time total (misspelt variable); setting a
+  user's role/status to the value it already had answered "not found"; password-reset requests could flood
+  every admin with notifications; change-password crashed for Google/Microsoft-only accounts;
+  a stray "." in the tier boxes; the admin dashboard mixed people with pieces.
 
 ---
 
@@ -55,7 +69,7 @@ nothing was taken from it: see *Security fixes* below for why that matters.
 ```
 frontend/  (vanilla JS, hash router)   ──  fetch + session cookie  ──▶  api/  (PHP 8, no framework)  ──▶  MySQL
   index.html   login / register                                          index.php   router (90 routes)
-  app.html     the application                                           lib/        db, auth, state machine, oauth
+  app.html     the application                                           lib/        db, auth, state machine, pricing, oauth
   js/pages/    28 pages: customer,                                       endpoints/  one file per area
                admin/, supplier                                          uploads/    product photos
                                                                          Stripe (checkout + webhook), Google / Microsoft sign-in
@@ -83,6 +97,13 @@ in_corso ─(goal reached)─▶ riuscita ─(admin: ripartisci)─▶ ordine_pr
 
 Reservation: `prenotata` → `confermata` (admin confirmed, awaiting payment) → `pagata` (Stripe webhook).
 The QR code is created on payment; an admin scans it at the pickup point.
+
+**Pricing.** A campaign has a list price (`prezzo_base`, shown struck through), a starting group price
+(`prezzo_iniziale`) and tiers (pieces reserved → price per piece). The live price (`prezzo_corrente`) is the
+price of the highest tier reached, or the starting price if none. It is recalculated on every join,
+withdrawal and edit while the campaign is open, and **frozen once the admin confirms the order** so nobody
+sees the amount change while paying. The customer pays pieces + commission (+ delivery if chosen);
+the agency's commission is the percentage of the pieces only.
 
 ---
 
@@ -139,10 +160,19 @@ They talk to the real running app over HTTP and write to the database, so **use 
 seeded database (reset with `schema.sql` + `seed.php` between runs).
 
 ```bash
-php tests/test_oauth.php                                   # 10 checks: forged / expired / wrong-audience login tokens
-php tests/test_api.php http://localhost:8888/<folder>/api  # 71 checks: security, customer journey, admin, likes, contract with the frontend
-php tests/test_ciclo_campagna.php http://localhost:8888/<folder>/api   # 36 checks: goal reached → paid (signed webhooks) → supplier → QR pickup
+# pure unit tests: no server, no database
+php tests/test_oauth.php          # 10 checks: forged / expired / wrong-audience login tokens
+php tests/test_prezzi.php         # 32 checks: tier pricing rules, incl. 200,000 random cases vs a reference
+php tests/test_ripartizione.php   # 12 checks: piece allocation, incl. 500,000 random cases
+
+# end to end: real HTTP, real sessions
+php tests/test_api.php http://localhost:8888/<folder>/api              # 122 checks: security, customer journey, admin, tiers, privileges, contract with the frontend
+php tests/test_ciclo_campagna.php http://localhost:8888/<folder>/api   # 46 checks: goal reached → paid (signed webhooks, exact money) → supplier → QR pickup
 ```
+
+That is **222 checks**. Each fix above was also confirmed the other way round: temporarily reverting it
+makes the matching test fail. On top of that, every SQL statement in the code is prepared against the
+schema (no missing tables or columns).
 
 ---
 
@@ -173,7 +203,8 @@ The full table is at the top of [`api/index.php`](api/index.php).
 - **Social logins are unit-tested only** (locally generated keys). Try one real Google and one real
   Microsoft sign-in once client IDs exist.
 - **No email is sent.** Password reset and supplier invites produce links an admin passes on by hand.
-- Any logged-in customer can see the full names of other participants in a campaign (`partecipazioni`).
+- After the admin confirms an order, a customer with an *unpaid* confirmed reservation can still withdraw,
+  which shrinks the order. Whether to allow that is a business decision.
 - No product photos in the demo data (the pages show placeholders).
 - The frontend still sends a leftover `Authorization: Bearer session_<id>` header. The API ignores it
   (**do not ever make the API trust it**: that was exactly the flaw in the Symfony version).

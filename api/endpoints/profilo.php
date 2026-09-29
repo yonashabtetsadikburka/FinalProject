@@ -82,7 +82,7 @@ function profilo_cambia_password(): void
     $st = db()->prepare('SELECT password_hash FROM utenti WHERE id = ?');
     $st->execute([$io]);
     $u = $st->fetch();
-    if (!$u || !password_verify($vecchia, $u['password_hash'])) {
+    if (!$u || !password_verify($vecchia, (string)($u['password_hash'] ?? ''))) {
         throw new AppError('PASSWORD_VECCHIA_ERRATA', 'La password attuale non e\' corretta', 401);
     }
 

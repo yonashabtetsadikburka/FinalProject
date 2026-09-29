@@ -123,7 +123,7 @@ function wallet_statistiche(): void
 
     json_ok([
         'totale_commissioni'   => $totale_commissioni,
-        'commissioni_mese'     => $commissione_mese ?? $totale_commissioni,
+        'commissioni_mese'     => $commissioni_mese,
         'totale_addebiti'      => $totale_addebiti,
         'ordini_in_corso'      => $ordini_in_corso,
         'campagne_completate'  => $campagne_completate,

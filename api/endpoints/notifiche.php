@@ -55,6 +55,12 @@ function notifiche_invia(): void
     $messaggio = campo($d, 'messaggio');
     $tipo_rif = $d['tipo_riferimento'] ?? null;
     $id_rif = $d['id_riferimento'] ?? null;
+    if ($tipo_rif !== null && !in_array($tipo_rif, ['colletta', 'prenotazione', 'proposta'], true)) {
+        throw new AppError('TIPO_RIFERIMENTO_NON_VALIDO', 'tipo_riferimento deve essere colletta, prenotazione o proposta');
+    }
+    if ($id_rif !== null && (filter_var($id_rif, FILTER_VALIDATE_INT) === false || (int)$id_rif < 1)) {
+        throw new AppError('CAMPO_NON_VALIDO', 'id_riferimento deve essere un intero >= 1');
+    }
 
     $tipi_validi = ['SCADENZA','ORDINE_DISPONIBILE','ORDINE_INVIATO','RITIRATO',
         'PROPOSTA_APPROVATA','PAGAMENTO_RIUSCITO','PAGAMENTO_RICEVUTO','PAGAMENTO_FALLITO',

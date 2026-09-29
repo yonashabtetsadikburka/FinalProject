@@ -107,6 +107,19 @@ ok('Mario riceve la notifica di pagamento', in_array('PAGAMENTO_RIUSCITO', $tipi
 $r = $admin->call('GET', '/notifiche');
 ok('l\'admin riceve la notifica di incasso', in_array('PAGAMENTO_RICEVUTO', array_column($r[1]['dati'] ?? [], 'tipo'), true));
 
+echo "\n== Contabilita': importi esatti ==\n";
+// 15 robot a 179,00 EUR, commissione 10% sui soli pezzi. Il cliente paga pezzi + commissione.
+$attesi = ['mario.rossi' => [984.50, 89.50], 'giulia.bianchi' => [787.60, 71.60],
+           'luca.verdi' => [590.70, 53.70], 'sara.neri' => [590.70, 53.70]];
+foreach ($attesi as $nome => [$tot, $comm]) {
+    $p = $cl[$nome]->call('GET', '/wallet')[1]['dati']['pagamenti'][0] ?? [];
+    ok(sprintf('%s ha pagato %.2f, di cui commissione %.2f', $nome, $tot, $comm),
+       abs(($p['importo'] ?? 0) - $tot) < 0.005 && abs(($p['commissione_agenzia'] ?? 0) - $comm) < 0.005, json_encode($p));
+}
+$st = $admin->call('GET', '/wallet/statistiche')[1]['dati'] ?? [];
+ok('commissioni dell\'agenzia = 10% dei pezzi = 268,50 (non 10% del totale incassato)', abs(($st['totale_commissioni'] ?? 0) - 268.50) < 0.005, json_encode($st));
+ok('totale incassato = 2.953,50 (pezzi 2.685,00 + commissioni 268,50)', abs(($st['totale_addebiti'] ?? 0) - 2953.50) < 0.005);
+
 echo "\n== Ordine al fornitore (parte da solo quando tutti hanno pagato) ==\n";
 $r = $admin->call('GET', '/campagne/3');
 ok('campagna in "ordine_fornitore"', ($r[1]['dati']['stato'] ?? '') === 'ordine_fornitore', $r[1]['dati']['stato'] ?? '');
@@ -123,6 +136,14 @@ echo "\n== Ritiro con QR ==\n";
 $r = $cl['mario.rossi']->call('GET', '/mie/assegnazioni/' . $pren['mario.rossi'] . '/qr');
 $token = $r[1]['dati']['token'] ?? '';
 ok('Mario ha il suo QR', strlen($token) >= 32, $codice($r));
+$r = $cl['giulia.bianchi']->call('GET', '/campagne/3/assegnazioni');
+ok('Giulia NON puo\' scaricare l\'elenco dei QR di tutti (403, nessun token)', $r[0] === 403 && empty($r[1]['dati']), "http {$r[0]}");
+$r = $anon->call('GET', '/campagne/3/assegnazioni');
+ok('senza login: 401', $r[0] === 401);
+$r = $admin->call('GET', '/campagne/3/assegnazioni');
+ok('l\'admin invece vede le 4 assegnazioni con i token', $r[0] === 200 && count($r[1]['dati'] ?? []) === 4 && strlen($r[1]['dati'][0]['token'] ?? '') >= 32, "http {$r[0]}");
+$dett = $cl['giulia.bianchi']->call('GET', '/campagne/3')[1]['dati'] ?? [];
+ok('il dettaglio campagna per un cliente non contiene alcun token QR', !str_contains(json_encode($dett), $token));
 $r = $cl['giulia.bianchi']->call('GET', '/mie/assegnazioni/' . $pren['mario.rossi'] . '/qr');
 ok('Giulia NON puo\' vedere il QR di Mario', $r[0] >= 400 && empty($r[1]['dati']['token']), "http {$r[0]}");
 $r = $cl['mario.rossi']->call('POST', "/ritiro/$token", []);

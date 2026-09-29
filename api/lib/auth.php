@@ -15,14 +15,39 @@ function utente_email(): string
     return (string)$st->fetchColumn();
 }
 
+/**
+ * L'utente collegato (id, ruolo, stato), riletto dal DATABASE una volta per richiesta.
+ * La sessione ricorda solo CHI sei (utente_id), mai cosa puoi fare: se il ruolo stesse
+ * nella sessione, un admin retrocesso o sospeso conserverebbe i suoi poteri finche'
+ * non esce. Cosi' ogni cambio (retrocessione, sospensione, eliminazione) vale subito.
+ * Ritorna null se non c'e' nessuno collegato o se l'account non esiste piu'.
+ */
+function utente_corrente(): ?array
+{
+    static $letto = false;
+    static $riga  = null;
+    static $per_id = null;
+
+    $id = utente_corrente_id();
+    if ($id === null) return null;
+    if (!$letto || $per_id !== $id) {
+        $st = db()->prepare('SELECT id, ruolo, stato FROM utenti WHERE id = ?');
+        $st->execute([$id]);
+        $riga  = $st->fetch() ?: null;
+        $letto = true;
+        $per_id = $id;
+    }
+    return $riga;
+}
+
 function sono_admin(): bool
 {
-    return ($_SESSION['ruolo'] ?? '') === 'admin';
+    return (utente_corrente()['ruolo'] ?? '') === 'admin';
 }
 
 function sono_fornitore(): bool
 {
-    return ($_SESSION['ruolo'] ?? '') === 'fornitore';
+    return (utente_corrente()['ruolo'] ?? '') === 'fornitore';
 }
 
 /**
@@ -52,6 +77,10 @@ function richiedi_login(): int
 {
     $id = utente_corrente_id();
     if ($id === null) throw new AppError('NON_AUTENTICATO', 'Devi effettuare il login', 401);
+    if (utente_corrente() === null) {       // account eliminato: la sessione non vale piu'
+        $_SESSION = [];
+        throw new AppError('NON_AUTENTICATO', 'Devi effettuare il login', 401);
+    }
     return $id;
 }
 
@@ -62,9 +91,7 @@ function richiedi_login(): int
 function richiedi_utente_attivo(): int
 {
     $id = richiedi_login();
-    $st = db()->prepare('SELECT stato FROM utenti WHERE id = ?');
-    $st->execute([$id]);
-    if ($st->fetchColumn() !== 'attivo') {
+    if ((utente_corrente()['stato'] ?? '') !== 'attivo') {
         throw new AppError('UTENTE_SOSPESO', 'Account sospeso: puoi consultare storico e profilo ma non effettuare nuove operazioni', 403);
     }
     return $id;

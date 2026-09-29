@@ -14,6 +14,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }   // solo da riga di 
 const DEMO_PASSWORD = 'Demo1234!';
 
 $cfg = require __DIR__ . '/../api/config.php';
+require __DIR__ . '/../api/lib/prezzo.php';     // prezzo_per_quantita(): la stessa regola dell'API
 $pdo = new PDO(
     "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['db']};charset=utf8mb4",
     $cfg['user'], $cfg['pass'],
@@ -80,13 +81,17 @@ $pFit    = $prod($fSport, 'Sport', 'Set 5 elastici fitness', 'Cinque livelli di 
 
 // ---------- campagne (+ prenotazioni coerenti con le quantita') ----------
 /** @param array<int,int> $prenot  id_utente => quantita */
-$campagna = function (int $prodotto, int $moq, int $scadeInGiorni, float $base, float $corrente,
+$campagna = function (int $prodotto, int $moq, int $scadeInGiorni, float $base, float $iniziale,
                       string $stato, array $prenot, array $scaglioni = []) use ($pdo, $ins, $giorni, $admin, $sede): int {
     $totale = array_sum($prenot);
+    // Il prezzo di questo momento segue gli scaglioni, come farebbe l'API a ogni adesione.
+    $lista = [];
+    foreach ($scaglioni as $soglia => $prezzo) $lista[] = ['soglia' => $soglia, 'prezzo' => $prezzo];
+    $corrente = prezzo_per_quantita($lista, $iniziale, $totale);
     $id = $ins('INSERT INTO collette (id_prodotto, id_aperta_da, id_referente, id_sede, quantita_minima, quantita_attuale,
-                                      data_limite, stato, prezzo_base, prezzo_corrente, percentuale_commissione)
-                VALUES (?,?,?,?,?,?,?,?,?,?,10.00)',
-               [$prodotto, $admin, $admin, $sede, $moq, $totale, $giorni($scadeInGiorni), $stato, $base, $corrente]);
+                                      data_limite, stato, prezzo_base, prezzo_iniziale, prezzo_corrente, percentuale_commissione)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,10.00)',
+               [$prodotto, $admin, $admin, $sede, $moq, $totale, $giorni($scadeInGiorni), $stato, $base, $iniziale, $corrente]);
     foreach ($prenot as $u => $q) {
         $ins("INSERT INTO prenotazioni (id_colletta, id_utente, quantita, importo_acconto, stato) VALUES (?,?,?,0,'prenotata')",
              [$id, $u, $q]);
@@ -96,12 +101,13 @@ $campagna = function (int $prodotto, int $moq, int $scadeInGiorni, float $base, 
     }
     return $id;
 };
-$cCuffie = $campagna($pCuffie, 20, 12, 89.90, 69.90, 'in_corso', [$mario => 4, $giulia => 3, $luca => 5, $sara => 2], [10 => 69.90, 20 => 59.90]);
-$campagna($pPower, 30, 6, 39.90, 27.90, 'in_corso', [$giulia => 4, $luca => 5]);
-$campagna($pRobot, 15, 5, 249.00, 179.00, 'riuscita', [$mario => 5, $giulia => 4, $luca => 3, $sara => 3]);
-$campagna($pPent, 10, 20, 129.00, 84.00, 'in_corso', [$sara => 3]);
-$campagna($pYoga, 25, 2, 45.00, 29.00, 'in_corso', [$mario => 8, $giulia => 6, $luca => 5, $sara => 3]);
-$campagna($pFit, 20, -3, 24.90, 16.90, 'fallita', [$mario => 2, $sara => 2]);
+// base = listino barrato, poi il prezzo di PARTENZA e gli scaglioni (pezzi totali => prezzo al pezzo)
+$cCuffie = $campagna($pCuffie, 20, 12, 89.90, 79.90, 'in_corso', [$mario => 4, $giulia => 3, $luca => 5, $sara => 2], [10 => 69.90, 20 => 59.90]);
+$campagna($pPower, 30, 6, 39.90, 32.90, 'in_corso', [$giulia => 4, $luca => 5], [15 => 29.90, 30 => 27.90]);
+$campagna($pRobot, 15, 5, 249.00, 219.00, 'riuscita', [$mario => 5, $giulia => 4, $luca => 3, $sara => 3], [8 => 199.00, 15 => 179.00]);
+$campagna($pPent, 10, 20, 129.00, 99.00, 'in_corso', [$sara => 3], [5 => 92.00, 10 => 84.00]);
+$campagna($pYoga, 25, 2, 45.00, 35.00, 'in_corso', [$mario => 8, $giulia => 6, $luca => 5, $sara => 3], [12 => 32.00, 25 => 29.00]);
+$campagna($pFit, 20, -3, 24.90, 19.90, 'fallita', [$mario => 2, $sara => 2]);
 
 // ---------- proposte dei clienti (in votazione) + voti ----------
 $proposta = function (int $chi, string $nome, string $desc, array $voti) use ($pdo, $ins, $fTech) {

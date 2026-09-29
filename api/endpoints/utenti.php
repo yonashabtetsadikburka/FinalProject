@@ -41,11 +41,11 @@ function utenti_aggiorna_stato(int $id): void
     if (!in_array($nuovo_stato, ['attivo', 'sospeso'], true)) {
         throw new AppError('STATO_NON_VALIDO', 'Stato non valido');
     }
-    $st = db()->prepare('UPDATE utenti SET stato = ? WHERE id = ?');
-    $st->execute([$nuovo_stato, $id]);
-    if ($st->rowCount() === 0) {
-        throw new AppError('UTENTE_INESISTENTE', 'Utente non trovato', 404);
-    }
+    $st = db()->prepare('SELECT id FROM utenti WHERE id = ?');
+    $st->execute([$id]);
+    if (!$st->fetch()) throw new AppError('UTENTE_INESISTENTE', 'Utente non trovato', 404);
+    // (rowCount() sarebbe 0 anche quando il valore e' gia' quello: non prova che l'utente manchi)
+    db()->prepare('UPDATE utenti SET stato = ? WHERE id = ?')->execute([$nuovo_stato, $id]);
     json_ok(['stato' => $nuovo_stato]);
 }
 
@@ -60,11 +60,10 @@ function utenti_aggiorna_ruolo(int $id): void
     if (!in_array($nuovo_ruolo, ['cliente', 'fornitore', 'admin'], true)) {
         throw new AppError('RUOLO_NON_VALIDO', 'Ruolo non valido');
     }
-    $st = db()->prepare('UPDATE utenti SET ruolo = ? WHERE id = ?');
-    $st->execute([$nuovo_ruolo, $id]);
-    if ($st->rowCount() === 0) {
-        throw new AppError('UTENTE_INESISTENTE', 'Utente non trovato', 404);
-    }
+    $st = db()->prepare('SELECT id FROM utenti WHERE id = ?');
+    $st->execute([$id]);
+    if (!$st->fetch()) throw new AppError('UTENTE_INESISTENTE', 'Utente non trovato', 404);
+    db()->prepare('UPDATE utenti SET ruolo = ? WHERE id = ?')->execute([$nuovo_ruolo, $id]);
     json_ok(['ruolo' => $nuovo_ruolo]);
 }
 

@@ -25,6 +25,7 @@ if (!is_file(__DIR__ . '/vendor/autoload.php')) {
 require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/auth.php';
+require __DIR__ . '/lib/prezzo.php';
 require __DIR__ . '/lib/stato.php';
 require __DIR__ . '/lib/ripartizione.php';
 require __DIR__ . '/lib/oauth.php';

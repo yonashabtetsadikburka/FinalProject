@@ -180,5 +180,163 @@ foreach (['/fornitore/io', '/fornitore/campagne', '/fornitore/ordini', '/fornito
 $r = $forn->call('GET', '/utenti');
 ok('il fornitore non e\' admin: /utenti vietato', $r[0] === 403);
 
+echo "\n== Privilegi e dati riservati ==\n";
+// Il ruolo si rilegge dal database: promozioni e retrocessioni valgono SUBITO, anche a sessione aperta.
+$elenco = $admin->call('GET', '/utenti')[1]['dati'] ?? [];
+$luca = (int)(array_values(array_filter($elenco, fn($u) => $u['email'] === 'luca.verdi@buypool.test'))[0]['id'] ?? 0);
+$lucaC = new Client($base); $lucaC->login('luca.verdi@buypool.test');
+[$h] = $lucaC->call('GET', '/utenti');
+ok('Luca e\' un cliente: /utenti vietato', $h === 403);
+$admin->call('PUT', "/utenti/$luca/ruolo", ['ruolo' => 'admin']);
+[$h] = $lucaC->call('GET', '/utenti');
+ok('promosso ad admin: la sua sessione GIA\' APERTA vale subito', $h === 200, "http $h");
+$admin->call('PUT', "/utenti/$luca/ruolo", ['ruolo' => 'cliente']);
+[$h] = $lucaC->call('GET', '/utenti');
+ok('retrocesso: la stessa sessione perde SUBITO i poteri da admin', $h === 403, "http $h");
+[$h] = $lucaC->call('PUT', '/utenti/1/ruolo', ['ruolo' => 'cliente']);
+ok('...e non puo\' piu\' cambiare i ruoli degli altri', $h === 403, "http $h");
+// Il caso davvero pericoloso: una sessione aperta MENTRE si e' admin, poi la retrocessione.
+$admin->call('PUT', "/utenti/$luca/ruolo", ['ruolo' => 'admin']);
+$exAdmin = new Client($base); $exAdmin->login('luca.verdi@buypool.test');
+[$h] = $exAdmin->call('GET', '/utenti');
+ok('sessione aperta da ADMIN: funziona', $h === 200, "http $h");
+$admin->call('PUT', "/utenti/$luca/ruolo", ['ruolo' => 'cliente']);
+[$h] = $exAdmin->call('GET', '/utenti');
+ok('l\'ex-admin, retrocesso, con la STESSA sessione non entra piu\' (403)', $h === 403, "http $h");
+[$h] = $exAdmin->call('GET', '/campagne/3/assegnazioni');
+ok('...e non legge piu\' i QR di nessuno', $h === 403, "http $h");
+$r = $admin->call('PUT', "/utenti/$luca/ruolo", ['ruolo' => 'cliente']);
+ok('reimpostare lo stesso ruolo non e\' "utente non trovato"', $r[0] === 200, "http {$r[0]}");
+$r = $admin->call('PUT', "/utenti/$luca/stato", ['stato' => 'attivo']);
+ok('stesso discorso per lo stato', $r[0] === 200, "http {$r[0]}");
+$r = $admin->call('PUT', '/utenti/99999/ruolo', ['ruolo' => 'cliente']);
+ok('un utente che non esiste da\' davvero 404', $r[0] === 404);
+
+$mail = 'temp' . bin2hex(random_bytes(3)) . '@buypool.test';
+$r = $anon->call('POST', '/registrazione', ['nome' => 'Temp', 'email' => $mail, 'password' => 'Password123!', 'privacy' => true]);
+$idTmp = (int)($r[1]['dati']['id'] ?? 0);
+$tmp = new Client($base); $tmp->call('POST', '/login', ['email' => $mail, 'password' => 'Password123!']);
+[$h] = $tmp->call('GET', '/io');
+ok('utente appena registrato e collegato', $idTmp > 0 && $h === 200);
+$admin->call('DELETE', "/utenti/$idTmp");
+[$h] = $tmp->call('GET', '/io');
+ok('account eliminato: la sua sessione non vale piu\' (401)', $h === 401, "http $h");
+
+// QR: l'elenco dei token e' un elenco di "biglietti": solo admin
+[$h] = $anon->call('GET', '/campagne/3/assegnazioni');
+ok('elenco assegnazioni/QR: senza login 401', $h === 401);
+[$h] = $mario->call('GET', '/campagne/3/assegnazioni');
+ok('elenco assegnazioni/QR: un cliente NON lo vede (403)', $h === 403, "http $h");
+[$h] = $admin->call('GET', '/campagne/3/assegnazioni');
+ok('elenco assegnazioni/QR: l\'admin si', $h === 200);
+
+// Partecipanti: nomi e scelte di consegna degli altri non servono ai clienti
+$d = $mario->call('GET', '/campagne/1')[1]['dati'] ?? [];
+ok('cliente: il dettaglio NON elenca gli altri partecipanti', ($d['partecipazioni'] ?? null) === [] && ($d['partecipanti'] ?? 0) >= 2);
+ok('...ma conserva il conteggio e la sua adesione', ($d['mia_partecipazione']['quantita'] ?? 0) === 4);
+$d = $admin->call('GET', '/campagne/1')[1]['dati'] ?? [];
+ok('admin: vede l\'elenco completo con i nomi', count($d['partecipazioni'] ?? []) === 4 && !empty($d['partecipazioni'][0]['nome']));
+
+// Reset password: chiunque puo' chiederlo per chiunque, ma non deve inondare di notifiche gli admin
+$contaReset = function () use ($admin) {
+    $n = $admin->call('GET', '/notifiche')[1]['dati'] ?? [];
+    return count(array_filter($n, fn($x) => $x['titolo'] === 'Richiesta Reset Password' && str_contains($x['messaggio'], '(giulia.bianchi@buypool.test)')));
+};
+$prima = $contaReset();
+for ($i = 0; $i < 4; $i++) $anon->call('POST', '/password/richiesta', ['email' => 'giulia.bianchi@buypool.test']);
+$dopo = $contaReset();
+ok('4 richieste di reset di fila avvisano gli admin al massimo una volta', $dopo - $prima <= 1, "prima=$prima dopo=$dopo");
+$r = $anon->call('POST', '/password/richiesta', ['email' => 'nessuno@buypool.test']);
+ok('email sconosciuta: identica risposta generica (non rivela chi e\' iscritto)', $r[0] === 200 && ($r[1]['dati']['richiesta'] ?? false) === true);
+
+$r = $admin->call('POST', '/notifiche', ['id_utente' => 2, 'tipo' => 'SISTEMA', 'titolo' => 't', 'messaggio' => 'm', 'tipo_riferimento' => 'boh']);
+ok('notifica con tipo_riferimento sbagliato: 400 chiaro, non 500', $r[0] === 400 && $codice($r) === 'TIPO_RIFERIMENTO_NON_VALIDO', "http {$r[0]}");
+$r = $admin->call('POST', '/notifiche', ['id_utente' => 2, 'tipo' => 'SISTEMA', 'titolo' => 'Prova', 'messaggio' => 'm', 'tipo_riferimento' => 'colletta', 'id_riferimento' => 1]);
+ok('notifica valida: 201', $r[0] === 201);
+
+echo "\n== Prezzi a scaglioni (il prezzo scende da solo) ==\n";
+$giulia = new Client($base); $giulia->login('giulia.bianchi@buypool.test');
+$sara   = new Client($base); $sara->login('sara.neri@buypool.test');
+$lucaC  = new Client($base); $lucaC->login('luca.verdi@buypool.test');
+$corpo = ['prodotto_id' => 6, 'scadenza' => date('Y-m-d H:i:s', strtotime('+10 days')), 'prezzo_base' => 60,
+          'prezzo_corrente' => 50, 'quantita_minima' => 12, 'percentuale_commissione' => 10,
+          'scaglioni' => [['soglia' => 4, 'prezzo' => 45], ['soglia' => 8, 'prezzo' => 40], ['soglia' => 12, 'prezzo' => 35]]];
+$cattivi = [
+    'soglia oltre il MOQ (12)'   => [['soglia' => 13, 'prezzo' => 30]],
+    'soglie duplicate'           => [['soglia' => 4, 'prezzo' => 45], ['soglia' => 4, 'prezzo' => 44]],
+    'prezzo che sale'            => [['soglia' => 4, 'prezzo' => 40], ['soglia' => 8, 'prezzo' => 45]],
+    'prezzo sopra la partenza'   => [['soglia' => 4, 'prezzo' => 70]],
+];
+foreach ($cattivi as $nome => $sc) {
+    $r = $admin->call('POST', '/campagne', array_merge($corpo, ['scaglioni' => $sc]));
+    ok("creazione rifiutata: $nome", $r[0] === 400 && $codice($r) === 'SCAGLIONI_NON_VALIDI', "http {$r[0]} " . $codice($r));
+}
+$r = $mario->call('POST', '/campagne', $corpo);
+ok('un cliente non puo\' creare campagne', $r[0] === 403);
+$r = $admin->call('POST', '/campagne', $corpo);
+ok('l\'admin crea la campagna con 3 scaglioni', $r[0] === 201 && isset($r[1]['dati']['id']), json_encode($r[1]));
+$idc = (int)($r[1]['dati']['id'] ?? 0);
+
+$vedi = fn(Client $c) => $c->call('GET', "/campagne/$idc")[1]['dati'] ?? [];
+$d = $vedi($mario);
+ok('il dettaglio restituisce gli scaglioni in ordine', array_map(fn($s) => [$s['soglia'], (float)$s['prezzo']], $d['scaglioni'] ?? []) == [[4, 45.0], [8, 40.0], [12, 35.0]]);
+ok('prezzo di partenza 50, prezzo corrente 50', (float)$d['prezzo_iniziale'] === 50.0 && (float)$d['prezzo_corrente'] === 50.0);
+
+$entra = fn(Client $c, int $q) => $c->call('POST', "/campagne/$idc/partecipazioni", ['quantita' => $q]);
+$prezzo = fn() => (float)($vedi($mario)['prezzo_corrente'] ?? -1);
+$scagl = fn(Client $c) => count(array_filter($c->call('GET', '/notifiche')[1]['dati'] ?? [],
+                          fn($n) => $n['tipo'] === 'NUOVO_SCAGLIONE' && str_contains($n['messaggio'], 'Set 5 elastici fitness')));
+
+$entra($mario, 3);
+ok('3 pezzi (sotto il primo scaglione): il prezzo resta 50', $prezzo() === 50.0);
+ok('...e nessuno viene avvisato di uno sconto', $scagl($mario) === 0);
+$entra($giulia, 3);
+ok('6 pezzi: scatta il 1o scaglione -> 45', $prezzo() === 45.0);
+ok('Mario (arrivato prima) riceve la notifica "Prezzo sceso!"', $scagl($mario) === 1);
+$entra($lucaC, 3);
+ok('9 pezzi: 2o scaglione -> 40', $prezzo() === 40.0);
+$entra($sara, 3);
+$d = $vedi($mario);
+ok('12 pezzi: ultimo scaglione -> 35 e obiettivo raggiunto', (float)$d['prezzo_corrente'] === 35.0 && $d['stato'] === 'riuscita');
+$r = $sara->call('DELETE', "/campagne/$idc/partecipazioni");
+$d = $vedi($mario);
+ok('Sara si ritira (9 pezzi): il prezzo TORNA a 40 e la campagna riapre', (float)$d['prezzo_corrente'] === 40.0 && $d['stato'] === 'in_corso', json_encode([$d['prezzo_corrente'], $d['stato']]));
+$entra($sara, 3);
+ok('Sara rientra: di nuovo 35 e riuscita', $prezzo() === 35.0 && $vedi($mario)['stato'] === 'riuscita');
+$lista = array_values(array_filter($mario->call('GET', '/campagne')[1]['dati'] ?? [], fn($c) => $c['id'] === $idc))[0] ?? [];
+ok('anche l\'elenco campagne mostra il prezzo aggiornato (35)', (float)($lista['prezzo_corrente'] ?? 0) === 35.0);
+
+// Modifica (admin): regole sugli scaglioni e sul prezzo
+$form = ['data_limite' => date('Y-m-d H:i:s', strtotime('+11 days')), 'quantita_minima' => 12, 'prezzo_corrente' => 50,
+         'prezzo_base' => 60, 'percentuale_commissione' => 10];
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['scaglioni' => [['soglia' => 6, 'prezzo' => 44]]]));
+ok('cambiare gli scaglioni con gia\' aderenti: rifiutato (409)', $r[0] === 409 && $codice($r) === 'CAMPAGNA_CON_ADESIONI', "http {$r[0]} " . $codice($r));
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['scaglioni' => $corpo['scaglioni']]));
+ok('rimandare il form IDENTICO (stessi scaglioni) e\' accettato', $r[0] === 200, "http {$r[0]} " . $codice($r));
+ok('...e non ha toccato il prezzo (35)', $prezzo() === 35.0);
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['prezzo_corrente' => 55]));
+$d = $vedi($mario);
+ok('cambiare il prezzo di PARTENZA (55) non sposta il prezzo di uno scaglione gia\' raggiunto',
+   $r[0] === 200 && (float)$d['prezzo_iniziale'] === 55.0 && (float)$d['prezzo_corrente'] === 35.0, json_encode([$r[0], $d['prezzo_iniziale'], $d['prezzo_corrente']]));
+$admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['prezzo_corrente' => 50]));
+
+// L'admin conferma l'ordine: da qui il prezzo e' CONGELATO
+$r = $admin->call('POST', "/campagne/$idc/ripartisci", []);
+ok('l\'admin conferma l\'ordine (ripartisce)', $r[0] === 200, $codice($r));
+ok('campagna in ordine_pronto', $vedi($mario)['stato'] === 'ordine_pronto');
+$lucaC->call('DELETE', "/campagne/$idc/partecipazioni");
+$d = $vedi($mario);
+ok('Luca si ritira (9 pezzi) ma il prezzo resta CONGELATO a 35 e la campagna resta ordine_pronto',
+   (int)$d['quantita_attuale'] === 9 && (float)$d['prezzo_corrente'] === 35.0 && $d['stato'] === 'ordine_pronto', json_encode([$d['quantita_attuale'], $d['prezzo_corrente'], $d['stato']]));
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['prezzo_corrente' => 45]));
+ok('con l\'ordine confermato non si cambia il prezzo di partenza (409)', $r[0] === 409 && $codice($r) === 'CAMPAGNA_NON_MODIFICABILE', "http {$r[0]} " . $codice($r));
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['percentuale_commissione' => 25]));
+ok('...e nemmeno la commissione (409)', $r[0] === 409 && $codice($r) === 'CAMPAGNA_NON_MODIFICABILE');
+$r = $admin->call('POST', "/campagne/$idc/modifica", array_merge($form, ['quantita_minima' => 5]));
+ok('...e nemmeno il minimo (409)', $r[0] === 409 && $codice($r) === 'CAMPAGNA_NON_MODIFICABILE');
+$r = $admin->call('POST', "/campagne/$idc/modifica", $form);
+ok('ma un form IDENTICO (es. solo per cambiare foto o scadenza) passa ancora', $r[0] === 200, "http {$r[0]} " . $codice($r));
+ok('il prezzo e\' rimasto 35', $prezzo() === 35.0);
+
 echo "\n" . ($falliti === 0 ? "TUTTI I $totale TEST SUPERATI" : "$falliti TEST FALLITI su $totale") . "\n";
 exit($falliti === 0 ? 0 : 1);

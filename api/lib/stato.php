@@ -10,6 +10,7 @@ declare(strict_types=1);
  *        in_corso -> fallita
  *
  * REGOLE:
+ *  0. Finche' la campagna e' aperta, riallinea anche il prezzo agli scaglioni (lib/prezzo.php)
  *  1. Transazione con FOR UPDATE per evitare race condition
  *  2. Ricalcolare sempre da zero (non incrementale)
  *  3. Se lo stato e' terminale (consegnata, annullata), non cambiare
@@ -22,7 +23,7 @@ function ricalcola_stato(int $campagna_id): string
     if ($ownTransaction) $pdo->beginTransaction();
     try {
         $st = $pdo->prepare(
-            'SELECT id, stato, quantita_attuale, quantita_minima, data_limite
+            'SELECT id, stato, quantita_attuale, quantita_minima, data_limite, prezzo_iniziale, prezzo_corrente
                FROM collette WHERE id = ? FOR UPDATE'
         );
         $st->execute([$campagna_id]);
@@ -59,6 +60,12 @@ function ricalcola_stato(int $campagna_id): string
                 'UPDATE collette SET stato = ?, data_agg_stato = NOW() WHERE id = ?'
             );
             $stUp->execute([$nuovoStato, $campagna_id]);
+        }
+
+        // Il prezzo segue gli scaglioni finche' la campagna e' aperta. Dopo la conferma
+        // dell'ordine (ordine_pronto) si congela: le persone stanno pagando quella cifra.
+        if (in_array($nuovoStato, ['in_corso', 'riuscita'], true)) {
+            ricalcola_prezzo($pdo, $c);
         }
 
         if ($ownTransaction) $pdo->commit();
