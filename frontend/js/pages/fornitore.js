@@ -2,6 +2,7 @@ import { apiGet, apiPost, apiPostForm } from '../api.js';
 import { getState } from '../state.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
+import { esc } from '../escape.js';
 
 const STATI_PROP = {
   in_attesa: 'In attesa di validazione', in_votazione: 'In votazione',
@@ -275,6 +276,6 @@ export async function FornitorePage(params = {}) {
       </div>`;
     renderFornitoreSezione(sezione);
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Accesso non disponibile</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Accesso non disponibile</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

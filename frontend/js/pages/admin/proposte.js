@@ -1,5 +1,6 @@
 import { apiGet, apiPut } from '../../api.js';
 import { Badge } from '../../components/badge.js';
+import { esc } from '../../escape.js';
 
 const STATI = {
   in_attesa: 'In Attesa', in_votazione: 'In Votazione', approvata_admin: 'Approvata',
@@ -158,12 +159,12 @@ async function renderAdminProposte() {
         <div class="admin-page-header"><h1>Gestione Proposte</h1></div>
         <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);flex-wrap:wrap;">
           ${[['attesa', 'In attesa'], ['votazione', 'In votazione'], ['gestite', 'Gestite'], ['tutte', 'Tutte']].map(([v, l]) =>
-            `<button class="btn btn-sm ${filtroStato === v ? 'btn-default' : 'btn-outline'}" onclick="setFiltroProposte('${v}')">${l}</button>`).join('')}
+            `<button class="btn btn-sm ${filtroStato === v ? 'btn-default' : 'btn-outline'}" data-v="${v}" onclick="setFiltroProposte(this.dataset.v)">${l}</button>`).join('')}
         </div>
         ${cards}
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 

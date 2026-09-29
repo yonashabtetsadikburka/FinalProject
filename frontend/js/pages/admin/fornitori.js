@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiPut } from '../../api.js';
 import { Table } from '../../components/table.js';
 import { Badge } from '../../components/badge.js';
+import { esc } from '../../escape.js';
 
 function statoAccesso(f) {
   if (f.id_utente) return Badge({ variant: 'success', children: 'Attivo' });
@@ -29,7 +30,7 @@ window.generaInvitoFornitore = async function(fornitoreId, nomeAzienda) {
             <p class="text-secondary text-sm" style="margin-bottom:var(--space-3);">Inoltra questo link al fornitore via email. Scade tra 7 giorni e puo' essere usato una sola volta.</p>
             <div style="background:var(--color-primary-light);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-4);font-size:var(--text-sm);word-break:break-all;">${link}</div>
             <div style="display:flex;gap:var(--space-2);">
-              <button class="btn btn-default w-full" onclick="navigator.clipboard.writeText('${link}').then(() => linkCopiatoToast(true)).catch(() => linkCopiatoToast(false))">Copia link</button>
+              <button class="btn btn-default w-full" data-link="${link}" onclick="navigator.clipboard.writeText(this.dataset.link).then(() => linkCopiatoToast(true)).catch(() => linkCopiatoToast(false))">Copia link</button>
               <button class="btn btn-outline w-full" onclick="document.getElementById('invito-modal').remove()">Chiudi</button>
             </div>
           </div>
@@ -51,7 +52,7 @@ window.collegaUtenteFornitore = async function(fornitoreId, nomeAzienda) {
       <div id="collega-modal" class="modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--space-4);">
         <div class="modal-content card" style="max-width:480px;width:100%;">
           <div class="card-content">
-            <h3 style="margin-bottom:var(--space-3);">Collega account a ${nomeAzienda}</h3>
+            <h3 style="margin-bottom:var(--space-3);">Collega account a ${esc(nomeAzienda)}</h3>
             <div id="collega-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
             <label class="text-sm">Utente esistente
               <select id="collega-user" style="width:100%;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:var(--space-2);">${options}</select>
@@ -188,8 +189,8 @@ export async function AdminFornitoriPage() {
       azioni: `<div style="display:flex;gap:4px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" onclick="modificaFornitore(${f.id})">Modifica</button>
         ${f.id_utente ? `<span class="text-xs text-secondary">${f.email_account || ''}</span>`
-          : `<button class="btn btn-outline btn-sm" onclick="generaInvitoFornitore(${f.id}, '${(f.nome_azienda || '').replace(/'/g, "\\'")}')">Genera invito</button>
-             <button class="btn btn-ghost btn-sm" onclick="collegaUtenteFornitore(${f.id}, '${(f.nome_azienda || '').replace(/'/g, "\\'")}')">Collega</button>`}
+          : `<button class="btn btn-outline btn-sm" data-nome="${f.nome_azienda || ''}" onclick="generaInvitoFornitore(${f.id}, this.dataset.nome)">Genera invito</button>
+             <button class="btn btn-ghost btn-sm" data-nome="${f.nome_azienda || ''}" onclick="collegaUtenteFornitore(${f.id}, this.dataset.nome)">Collega</button>`}
       </div>`
     }));
 
@@ -228,6 +229,6 @@ export async function AdminFornitoriPage() {
         </div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

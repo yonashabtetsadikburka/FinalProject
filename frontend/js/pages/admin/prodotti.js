@@ -1,6 +1,7 @@
 import { apiGet, apiPostForm, apiDelete } from '../../api.js';
 import { API_URL } from '../../constants.js';
 import { Table } from '../../components/table.js';
+import { esc } from '../../escape.js';
 
 function imgUrl(path) {
   if (!path) return '';
@@ -130,7 +131,7 @@ export async function AdminProdottiPage() {
       like: `${p.mi_piace || 0}`,
       azioni: `<div style="display:flex;gap:4px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" onclick="modificaProdotto(${p.id})">Modifica</button>
-        <button class="btn btn-destructive btn-sm" onclick="eliminaProdotto(${p.id}, '${(p.nome || '').replace(/'/g, "\\'")}')">Elimina</button>
+        <button class="btn btn-destructive btn-sm" data-nome="${p.nome || ''}" onclick="eliminaProdotto(${p.id}, this.dataset.nome)">Elimina</button>
       </div>`
     }));
 
@@ -170,6 +171,6 @@ export async function AdminProdottiPage() {
         </div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

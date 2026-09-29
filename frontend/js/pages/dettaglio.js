@@ -7,6 +7,7 @@ import { Badge } from '../components/badge.js';
 import { Card } from '../components/card.js';
 import { Avatar } from '../components/dropdown.js';
 import { startCountdowns, formatCountdown } from '../countdown.js';
+import { esc } from '../escape.js';
 
 let currentIdColletta = null;
 let currentCampagna = null;
@@ -465,7 +466,7 @@ window.handleAderisci = async function() {
   } catch (err) {
     const toast = document.createElement('div');
     toast.className = 'toast toast-error';
-    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Errore</div><div class="toast-description">${err.message}</div></div>`;
+    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Errore</div><div class="toast-description">${esc(err.message)}</div></div>`;
     document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
   }
@@ -486,7 +487,7 @@ window.handleAnnullaAdesione = async function(campagnaId) {
   } catch (err) {
     const toast = document.createElement('div');
     toast.className = 'toast toast-error';
-    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Errore</div><div class="toast-description">${err.message}</div></div>`;
+    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Errore</div><div class="toast-description">${esc(err.message)}</div></div>`;
     document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
   }
@@ -520,6 +521,6 @@ export async function DettaglioPage(params) {
     } catch (_) {}
     startCountdowns();
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p><a href="#/" class="btn btn-default">Torna alle campagne</a></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p><a href="#/" class="btn btn-default">Torna alle campagne</a></div></div>`;
   }
 }

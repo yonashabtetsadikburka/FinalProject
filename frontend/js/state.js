@@ -1,3 +1,5 @@
+import { sanificaDeep } from './escape.js';
+
 let state = {
   user: null,
   token: null,
@@ -26,7 +28,8 @@ export function initSession() {
 
   if (token && userJson) {
     try {
-      const user = JSON.parse(userJson);
+      // Il localStorage non e' fidato (sessione vecchia, modificato a mano): si sanifica ad ogni lettura.
+      const user = sanificaDeep(JSON.parse(userJson));
       setState({ user, token, isLoading: false });
     } catch (e) {
       localStorage.removeItem('buypool_token');
@@ -39,6 +42,7 @@ export function initSession() {
 }
 
 export function saveSession(user, token) {
+  user = sanificaDeep(user);
   localStorage.setItem('buypool_token', token);
   localStorage.setItem('buypool_user', JSON.stringify(user));
   setState({ user, token });

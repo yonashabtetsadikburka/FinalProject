@@ -3,6 +3,7 @@ import { setPageInterval } from '../page-timers.js';
 import { Badge } from '../components/badge.js';
 import { showQrModal } from '../qr-modal.js';
 import { STATI_ORDINE, deliveryType, statoOrdine, etichettaStato } from '../stato-ordine.js';
+import { esc, unesc } from '../escape.js';
 
 /** Micro-label secondaria solo per spedizione in fase fornitore o successiva. */
 function microSpedizione(p) {
@@ -111,7 +112,7 @@ window.apriRecensionePopup = async function(fornitoreId, nomeFornitore) {
       <div class="modal-content card" style="max-width:420px;width:92%;">
         <div class="card-content">
           <h3 style="margin-bottom:var(--space-1);">Lascia una recensione...</h3>
-          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">...a ${nomeFornitore || 'questo fornitore'} per il tuo acquisto ritirato.</p>
+          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">...a ${esc(nomeFornitore) || 'questo fornitore'} per il tuo acquisto ritirato.</p>
           <div id="rec-popup-stars" style="font-size:var(--text-2xl);cursor:pointer;margin-bottom:var(--space-2);">
             ${[1, 2, 3, 4, 5].map(i => `<span class="rec-star" onclick="recPopupSetVoto(${i})" style="color:var(--color-border);">&#9733;</span>`).join('')}
           </div>
@@ -178,7 +179,7 @@ export async function OrdiniPage() {
             const rec = await apiGet(`/fornitori/${r.fornitore_id}/recensioni`);
             if (!rec.dati?.mia) {
               sessionStorage.setItem('recPopupShown', '1');
-              apriRecensionePopup(r.fornitore_id, r.fornitore || '');
+              apriRecensionePopup(r.fornitore_id, unesc(r.fornitore || ''));   // la funzione riceve il testo originale e lo escapa lei
               break;
             }
           } catch (_) {}
@@ -205,7 +206,7 @@ export async function OrdiniPage() {
       }, 2000);
     }
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 
@@ -255,14 +256,14 @@ function ordineCardHtml(p) {
   const daPagare = p.stato === 'confermata';
   const spedizione = dt === 'spedizione';
   const haScelta = !!p.consegna_modalita;
-  const nomeF = (p.fornitore || '').replace(/'/g, "\\'");
+  const nomeF = p.fornitore || '';
   const dataTxt = new Date(p.data_prenotazione).toLocaleDateString('it-IT');
   const totaleTxt = (p.totale !== null && p.totale !== undefined && p.totale !== '') ? `€${parseFloat(p.totale).toFixed(2)}` : '—';
   const azioneHtml = showQr ? `<button class="btn btn-default btn-sm" onclick="showQr(${p.id})">
       <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
       Mostra QR
     </button>`
-    : (showRecensione ? `<button class="btn btn-outline btn-sm" onclick="apriRecensionePopup(${p.fornitore_id}, '${nomeF}')">Lascia una recensione</button>` : '');
+    : (showRecensione ? `<button class="btn btn-outline btn-sm" data-nome="${nomeF}" onclick="apriRecensionePopup(${p.fornitore_id}, this.dataset.nome)">Lascia una recensione</button>` : '');
   return `
     <div class="card order-card">
       <div class="order-summary-band">

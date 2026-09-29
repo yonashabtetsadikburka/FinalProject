@@ -1,4 +1,5 @@
 import { apiGet } from '../api.js';
+import { esc } from '../escape.js';
 
 let fornitoriTutti = [];
 let filtroCategoria = '';
@@ -14,7 +15,7 @@ window.fornitoriFiltra = function() {
 };
 
 window.fornitoriCategoria = function(cat) {
-  filtroCategoria = cat;
+  filtroCategoria = esc(cat);   // f.categoria arriva gia' escapata: si confronta la stessa forma
   document.querySelectorAll('.fornitori-cat-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.cat === cat));
   fornitoriFiltra();
@@ -63,7 +64,7 @@ export async function FornitoriPage() {
     const chipLabel = c => c === '__senza__' ? 'Senza categoria' : c;
     const chips = ['<button class="wishlist-tab fornitori-cat-chip active" data-cat="" onclick="fornitoriCategoria(\'\')">Tutte</button>']
       .concat(categorie.map(c =>
-        `<button class="wishlist-tab fornitori-cat-chip" data-cat="${c}" onclick="fornitoriCategoria('${c.replace(/'/g, "\\'")}')">${chipLabel(c)}</button>`))
+        `<button class="wishlist-tab fornitori-cat-chip" data-cat="${c}" onclick="fornitoriCategoria(this.dataset.cat)">${chipLabel(c)}</button>`))
       .join('');
 
     content.innerHTML = `
@@ -79,6 +80,6 @@ export async function FornitoriPage() {
         <div class="supplier-list" id="fornitori-grid">${fornitoriHtml(fornitoriTutti)}</div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

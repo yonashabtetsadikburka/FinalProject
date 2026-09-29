@@ -2,6 +2,7 @@ import { getState } from '../state.js';
 import { apiGet } from '../api.js';
 import { Badge } from '../components/badge.js';
 import { STATI_ORDINE, statoOrdine, etichettaStato } from '../stato-ordine.js';
+import { esc } from '../escape.js';
 
 let partDati = [];
 let partFiltroQ = '';
@@ -86,7 +87,7 @@ export async function PartecipazioniPage() {
       </div>`;
     renderPartList();
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 

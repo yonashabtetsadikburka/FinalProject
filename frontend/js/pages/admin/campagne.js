@@ -1,5 +1,6 @@
 import { apiGet, apiPostForm, apiDelete } from '../../api.js';
 import { API_URL } from '../../constants.js';
+import { esc } from '../../escape.js';
 
 function campImgUrl(path) {
   if (!path) return '';
@@ -360,7 +361,7 @@ export async function AdminCampagnePage() {
         pubblicata: c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : '-',
         azioni: `<div class="azioni-campagne">
           <button class="btn btn-outline btn-sm" onclick="modificaCampagna(${c.id})">Modifica</button>
-          <button class="btn btn-destructive btn-sm" onclick="eliminaCampagna(${c.id}, '${(c.prodotto || '').replace(/'/g, "\\'")}')">Elimina</button>
+          <button class="btn btn-destructive btn-sm" data-nome="${c.prodotto || ''}" onclick="eliminaCampagna(${c.id}, this.dataset.nome)">Elimina</button>
         </div>`
       };
     });
@@ -384,6 +385,6 @@ export async function AdminCampagnePage() {
         </div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

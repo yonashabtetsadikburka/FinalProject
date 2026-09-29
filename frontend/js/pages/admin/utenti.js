@@ -2,6 +2,7 @@ import { apiGet, apiPut, apiDelete, apiPost } from '../../api.js';
 import { getState } from '../../state.js';
 import { Table } from '../../components/table.js';
 import { RUOLI_LABELS, RUOLI_BADGES, STATI_PRENOTAZIONE_LABELS } from '../../constants.js';
+import { esc } from '../../escape.js';
 
 window.cambiaRuoloUtente = async function(userId, nuovoRuolo, selectEl) {
   try {
@@ -147,7 +148,7 @@ window.showUtenteDettaglio = async function(userId) {
             <div style="display:flex;gap:var(--space-2);margin-top:var(--space-4);">
               <button class="btn btn-outline w-full" onclick="document.getElementById('utente-modal').remove()">Chiudi</button>
               ${isSelf ? '' : `<button class="btn btn-outline w-full" onclick="generaResetLink(${u.id})">Genera link reset</button>`}
-              ${isSelf ? '' : `<button class="btn btn-destructive w-full" onclick="eliminaUtente(${u.id}, '${u.nome} ${u.cognome || ''}')">Elimina</button>`}
+              ${isSelf ? '' : `<button class="btn btn-destructive w-full" data-nome="${u.nome} ${u.cognome || ''}" onclick="eliminaUtente(${u.id}, this.dataset.nome)">Elimina</button>`}
             </div>
             <div id="reset-link-box" style="display:none;margin-top:var(--space-3);background:var(--color-primary-light);border-radius:var(--radius-sm);padding:var(--space-3);font-size:var(--text-sm);word-break:break-all;"></div>
           </div>
@@ -205,6 +206,6 @@ export async function AdminUtentiPage() {
         </div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

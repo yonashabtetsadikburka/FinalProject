@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from '../../api.js';
 import { Table } from '../../components/table.js';
 import { Badge } from '../../components/badge.js';
+import { esc } from '../../escape.js';
 
 let filtroRitiri = 'tutti';
 let ritiriDati = [];
@@ -59,7 +60,7 @@ window.confermaRitiroAdmin = async function() {
     input.value = '';
     await ricaricaRitiri();
   } catch (err) {
-    resultDiv.innerHTML = `<div class="text-sm" style="color:var(--color-error);">${err.message}</div>`;
+    resultDiv.innerHTML = `<div class="text-sm" style="color:var(--color-error);">${esc(err.message)}</div>`;
   }
 };
 
@@ -126,6 +127,6 @@ export async function AdminRitiriPage() {
     filtroRitiri = 'tutti';
     await ricaricaRitiri();
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

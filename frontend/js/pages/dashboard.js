@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../api.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
 import { STATI_PRENOTAZIONE_LABELS } from '../constants.js';
+import { esc, unesc } from '../escape.js';
 
 window.dashPaga = async function(prenotazioneId) {
   try {
@@ -109,7 +110,7 @@ export async function DashboardPage() {
     const notHtml = notifiche.map(n => `
       <div style="padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
         <div class="text-sm font-medium">${n.titolo}</div>
-        <div class="text-xs text-secondary">${n.messaggio?.slice(0, 90)}${(n.messaggio || '').length > 90 ? '…' : ''}</div>
+        <div class="text-xs text-secondary">${esc(unesc(n.messaggio || '').slice(0, 90))}${unesc(n.messaggio || '').length > 90 ? '…' : ''}</div>
       </div>`).join('') || '<p class="text-sm text-secondary">Nessuna notifica non letta.</p>';
 
     const propHtml = mieProposte.length > 0
@@ -146,6 +147,6 @@ export async function DashboardPage() {
         </div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

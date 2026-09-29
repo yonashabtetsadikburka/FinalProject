@@ -1,4 +1,5 @@
 import { apiPost, apiGet } from '../api.js';
+import { esc } from '../escape.js';
 
 export function PasswordDimenticataPage() {
   const content = document.querySelector('.main-content');
@@ -63,7 +64,7 @@ export async function PasswordResetPage() {
     info = res.dati;
   } catch (err) {
     content.innerHTML = `<div class="login-page"><div class="login-card card"><div class="card-content" style="text-align:center;">
-      <h2>Link non valido</h2><p class="text-secondary">${err.message}</p>
+      <h2>Link non valido</h2><p class="text-secondary">${esc(err.message)}</p>
       <a href="#/login" class="btn btn-default" style="margin-top:var(--space-4);">Vai al login</a>
     </div></div></div>`;
     return;

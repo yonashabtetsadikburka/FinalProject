@@ -47,6 +47,12 @@ nothing was taken from it: see *Security fixes* below for why that matters.
 - **Six fields the pages read were never sent by the API** (product description on the campaign page,
   supplier info, reviewer initial, pickup-point details, trust score, like/campaign flags).
 - Config, scripts and tests are no longer downloadable over the web; the upload folder cannot run code.
+- **Stored XSS: any customer could run script in an admin's browser.** No page escaped user text, so a
+  proposal named `<img src=x onerror=...>` executed when the admin opened the proposals page (and the same
+  through user names, supplier and product names, reviews and notifications). Every API response is now
+  escaped once in `api.js`, no text goes inside an inline handler any more (`data-*` attributes instead),
+  stored session data is sanitised, and two Node checks guard the rules. Verified in a real browser on 17
+  admin pages and 10 customer pages with hostile text in every field type.
 - **Any customer could read every participant's QR pickup token** (`GET /campagne/{id}/assegnazioni`),
   and so collect someone else's goods. Admin only now; the campaign page also stopped listing other
   people's names and delivery choices to customers.
@@ -167,13 +173,15 @@ seeded database (reset with `schema.sql` + `seed.php` between runs).
 php tests/test_oauth.php          # 10 checks: forged / expired / wrong-audience login tokens
 php tests/test_prezzi.php         # 32 checks: tier pricing rules, incl. 200,000 random cases vs a reference
 php tests/test_ripartizione.php   # 12 checks: piece allocation, incl. 500,000 random cases
+node tests/test_escape.mjs                 # 30 checks: the anti-XSS escaping (needs Node)
+node tests/test_frontend_sicurezza.mjs     # 9 checks: scans every page for the dangerous patterns
 
 # end to end: real HTTP, real sessions
 php tests/test_api.php http://localhost:8888/<folder>/api              # 125 checks: security, customer journey, admin, tiers, privileges, contract with the frontend
 php tests/test_ciclo_campagna.php http://localhost:8888/<folder>/api   # 46 checks: goal reached → paid (signed webhooks, exact money) → supplier → QR pickup
 ```
 
-That is **225 checks**. Each fix above was also confirmed the other way round: temporarily reverting it
+That is **264 checks**. Each fix above was also confirmed the other way round: temporarily reverting it
 makes the matching test fail. On top of that, every SQL statement in the code is prepared against the
 schema (no missing tables or columns).
 
@@ -206,6 +214,10 @@ The full table is at the top of [`api/index.php`](api/index.php).
 - **Social logins are unit-tested only** (locally generated keys). Try one real Google and one real
   Microsoft sign-in once client IDs exist.
 - **No email is sent.** Password reset and supplier invites produce links an admin passes on by hand.
+- **Guest browsing is half-built** (see `frontend/README.md`): the pages support it but the API requires login.
+  Decide: open `GET /campagne` and `GET /campagne/{id}` (with rate limiting) or remove the guest code.
+- Ask Yonas for his local `api/schema.sql` and `seed_data.sql` (his README mentions them; they were never
+  committed) and compare them with `database/schema.sql`.
 - After the admin confirms an order, a customer with an *unpaid* confirmed reservation can still withdraw,
   which shrinks the order. Whether to allow that is a business decision.
 - No product photos in the demo data (the pages show placeholders).

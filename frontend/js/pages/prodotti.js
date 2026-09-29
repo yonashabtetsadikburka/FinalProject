@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiDelete } from '../api.js';
 import { API_URL } from '../constants.js';
 import { Badge } from '../components/badge.js';
+import { esc } from '../escape.js';
 
 function imgUrl(path) {
   if (!path) return '';
@@ -12,7 +13,7 @@ let prodottiTutti = [];
 let prodottiFiltroCategoria = '';
 
 window.prodottiCategoria = function(cat) {
-  prodottiFiltroCategoria = cat;
+  prodottiFiltroCategoria = esc(cat);   // p.categoria arriva gia' escapata: si confronta la stessa forma
   document.querySelectorAll('.prodotti-cat-chip').forEach(ch =>
     ch.classList.toggle('active', ch.dataset.cat === cat));
   renderProdotti();
@@ -47,7 +48,7 @@ window.apriImmagineProdotto = function(src) {
   const modalHtml = `
     <div id="img-modal" class="modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1100;padding:var(--space-4);" onclick="if(event.target===this)document.getElementById('img-modal').remove()">
       <div style="position:relative;max-width:90vw;max-height:85vh;">
-        <img src="${src}" alt="Immagine prodotto" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:var(--radius-md);" />
+        <img src="${esc(src)}" alt="Immagine prodotto" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:var(--radius-md);" />
         <button class="btn btn-outline btn-sm" style="position:absolute;top:8px;right:8px;background:var(--color-white);" onclick="document.getElementById('img-modal').remove()">Chiudi</button>
       </div>
     </div>`;
@@ -64,7 +65,7 @@ function renderProdotti() {
       <div class="card-content">
         <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;">
           ${p.immagine
-            ? `<button onclick="apriImmagineProdotto('${imgUrl(p.immagine)}')" style="flex:0 0 120px;padding:0;border:none;background:none;cursor:zoom-in;" aria-label="Ingrandisci immagine">
+            ? `<button data-src="${imgUrl(p.immagine)}" onclick="apriImmagineProdotto(this.dataset.src)" style="flex:0 0 120px;padding:0;border:none;background:none;cursor:zoom-in;" aria-label="Ingrandisci immagine">
                  <img src="${imgUrl(p.immagine)}" alt="${p.nome}" style="width:120px;max-width:100%;height:120px;object-fit:cover;border-radius:var(--radius-md);" />
                </button>`
             : `<div class="supplier-logo" style="flex:0 0 120px;width:120px;max-width:100%;height:120px;font-size:var(--text-3xl);">${(p.nome || '?')[0]}</div>`}
@@ -108,7 +109,7 @@ export async function ProdottiPage() {
     const chips = ['<button class="wishlist-tab prodotti-cat-chip active" data-cat="" onclick="prodottiCategoria(\'\')">Tutte</button>']
       .concat(categorie.map(c => {
         const label = c === '__senza__' ? 'Senza categoria' : c;
-        return `<button class="wishlist-tab prodotti-cat-chip" data-cat="${c}" onclick="prodottiCategoria('${c.replace(/'/g, "\\'")}')">${label}</button>`;
+        return `<button class="wishlist-tab prodotti-cat-chip" data-cat="${c}" onclick="prodottiCategoria(this.dataset.cat)">${label}</button>`;
       })).join('');
     content.innerHTML = `
       <div class="content-area">
@@ -118,6 +119,6 @@ export async function ProdottiPage() {
       </div>`;
     renderProdotti();
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

@@ -2,6 +2,7 @@ import { apiGet, apiPost } from '../../api.js';
 import { setPageInterval } from '../../page-timers.js';
 import { Badge } from '../../components/badge.js';
 import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES, STATI_PRENOTAZIONE_LABELS } from '../../constants.js';
+import { esc } from '../../escape.js';
 
 window.confermaOrdine = async function(collettaId) {
   try {
@@ -132,7 +133,7 @@ async function renderAdminOrdini() {
         </div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 

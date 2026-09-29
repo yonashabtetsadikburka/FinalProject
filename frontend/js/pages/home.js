@@ -2,6 +2,7 @@ import { apiGet } from '../api.js';
 import { API_URL } from '../constants.js';
 import { Progress } from '../components/progress.js';
 import { startCountdowns, formatCountdown } from '../countdown.js';
+import { esc } from '../escape.js';
 
 function imgUrl(path) {
   if (!path) return '';
@@ -231,6 +232,6 @@ export async function HomePage() {
       }
     });
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore di caricamento</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore di caricamento</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

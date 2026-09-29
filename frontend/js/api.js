@@ -1,5 +1,6 @@
 import { API_URL } from './constants.js';
 import { getState, clearSession } from './state.js';
+import { esc, escapeDeep } from './escape.js';
 
 export async function apiRequest(method, url, body = null) {
   const { token } = getState();
@@ -42,7 +43,7 @@ export async function apiRequest(method, url, body = null) {
       if (data.errore?.codice === 'UTENTE_SOSPESO') {
         const toast = document.createElement('div');
         toast.className = 'toast toast-error';
-        toast.innerHTML = `<div class="toast-content"><div class="toast-title">Account sospeso</div><div class="toast-description">${data.errore?.messaggio || ''}</div></div>`;
+        toast.innerHTML = `<div class="toast-content"><div class="toast-title">Account sospeso</div><div class="toast-description">${esc(data.errore?.messaggio || '')}</div></div>`;
         document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
       }
@@ -51,6 +52,8 @@ export async function apiRequest(method, url, body = null) {
       throw err;
     }
 
+    // Da qui in poi tutti i testi sono DATI sicuri per l'HTML (vedi escape.js).
+    data.dati = escapeDeep(data.dati);
     return data;
   } catch (error) {
     if (error.message === 'Sessione scaduta') throw error;
@@ -83,6 +86,7 @@ export async function apiPostForm(url, formData) {
     const response = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body: formData, cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.errore?.messaggio || 'Errore del server');
+    data.dati = escapeDeep(data.dati);
     return data;
   } catch (error) {
     console.error('API Error:', error);

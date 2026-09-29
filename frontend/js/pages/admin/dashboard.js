@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiPut } from '../../api.js';
 import { Card } from '../../components/card.js';
 import { STATI_CAMPAGNA_LABELS, STATI_CAMPAGNA_BADGES } from '../../constants.js';
+import { esc } from '../../escape.js';
 
 export async function AdminDashboardPage() {
   const content = document.getElementById('content-area') || document.querySelector('.main-content');
@@ -41,6 +42,6 @@ export async function AdminDashboardPage() {
         ${Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-4);">Campagne Recenti</h3><div class="table-container"><table class="table"><thead><tr><th>Campagna</th><th>Fornitore</th><th>Stato</th><th>Partecipanti</th></tr></thead><tbody>${campagne.slice(0, 5).map(c => `<tr><td class="font-medium">${c.prodotto || '-'}</td><td>${c.fornitore || '-'}</td><td>${STATI_CAMPAGNA_LABELS[c.stato] || c.stato}</td><td>${c.partecipanti || 0} <span class="text-secondary">(${c.quantita_attuale ?? 0}/${c.quantita_minima} pezzi)</span></td></tr>`).join('')}</tbody></table></div></div>` })}
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }

@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiDelete } from '../api.js';
 import { Card } from '../components/card.js';
+import { esc } from '../escape.js';
 
 let recVoto = 0;
 
@@ -97,7 +98,7 @@ export async function FornitoriDettaglioPage(params) {
                   </div>
                 </div>
                 <p class="text-secondary" style="margin-bottom: var(--space-4);">${fornitore.descrizione || ''}</p>
-                ${fornitore.sito_web ? `<a href="${fornitore.sito_web}" target="_blank" rel="noopener" class="btn btn-default w-full" style="margin-bottom: var(--space-4);">Vai al sito / catalogo
+                ${/^https?:\/\//i.test(fornitore.sito_web || '') ? `<a href="${fornitore.sito_web}" target="_blank" rel="noopener" class="btn btn-default w-full" style="margin-bottom: var(--space-4);">Vai al sito / catalogo
                   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 </a>` : ''}
                 <h3 style="margin-bottom: var(--space-3);">Prodotti</h3>
@@ -140,7 +141,7 @@ export async function FornitoriDettaglioPage(params) {
       </div>
     `;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 

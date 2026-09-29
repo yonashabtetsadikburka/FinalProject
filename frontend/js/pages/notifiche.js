@@ -1,6 +1,7 @@
 import { getState } from '../state.js';
 import { apiGet, apiPost, apiPut } from '../api.js';
 import { updateNotificationBadge } from '../components/header.js';
+import { esc } from '../escape.js';
 
 const NOTIFICA_ICONS = {
   SCADENZA: '<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
@@ -44,7 +45,7 @@ export async function NotifichePage() {
         <div class="card"><div class="notification-list">${notificheHtml}</div></div>
       </div>`;
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p></div></div>`;
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${esc(err.message)}</p></div></div>`;
   }
 }
 

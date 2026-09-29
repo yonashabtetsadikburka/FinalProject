@@ -1,4 +1,5 @@
 import { API_URL } from '../constants.js';
+import { esc, escapeDeep } from '../escape.js';
 
 async function publicPost(path, body) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -8,6 +9,7 @@ async function publicPost(path, body) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.errore?.messaggio || 'Errore del server');
+  data.dati = escapeDeep(data.dati);   // testi sicuri per l'HTML (vedi escape.js)
   return data;
 }
 
@@ -15,6 +17,7 @@ async function publicGet(path) {
   const res = await fetch(`${API_URL}${path}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.errore?.messaggio || 'Errore del server');
+  data.dati = escapeDeep(data.dati);   // testi sicuri per l'HTML (vedi escape.js)
   return data;
 }
 
@@ -43,7 +46,7 @@ export async function FornitoreAttivaPage() {
     invito = res.dati;
   } catch (err) {
     content.innerHTML = `<div class="login-page"><div class="login-card card"><div class="card-content" style="text-align:center;">
-      <h2>Invito non valido</h2><p class="text-secondary">${err.message}</p>
+      <h2>Invito non valido</h2><p class="text-secondary">${esc(err.message)}</p>
       <a href="index.html#/login" class="btn btn-default" style="margin-top:var(--space-4);">Vai al login</a>
     </div></div></div>`;
     return;
