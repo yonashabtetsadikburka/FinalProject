@@ -48,6 +48,13 @@ ok('bloccata anche cambiando le maiuscole dell\'email', $r[0] === 429);
 $r = (new Client($base))->login('mario.rossi@buypool.test');
 ok('un altro utente puo\' ancora accedere normalmente', $r[0] === 200);
 
+$intest = (new Client($base))->intestazioni('POST', '/login', ['email' => 'mario.rossi@buypool.test', 'password' => 'Demo1234!']);
+preg_match('/^Set-Cookie:\s*([^=]+)=[^;]+;(.*)$/mi', $intest, $ck);
+$path = parse_url($base, PHP_URL_PATH);
+ok('cookie di sessione con nome proprio (non PHPSESSID)', ($ck[1] ?? '') === 'BUYPOOL_SESSION', $ck[1] ?? 'nessun cookie');
+ok('...valido solo sotto la cartella dell\'API (' . $path . '), non su tutto l\'host', stripos($ck[2] ?? '', 'path=' . $path) !== false, $ck[2] ?? '');
+ok('...HttpOnly e SameSite=Lax', stripos($ck[2] ?? '', 'httponly') !== false && stripos($ck[2] ?? '', 'samesite=lax') !== false);
+
 echo "\n== Cliente: percorso principale ==\n";
 $mario = new Client($base);
 $r = $mario->login('mario.rossi@buypool.test');

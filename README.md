@@ -56,6 +56,9 @@ nothing was taken from it: see *Security fixes* below for why that matters.
   the tiers typed into the admin forms were silently dropped. Now the price follows the tiers as people
   join or withdraw (ported from the Laravel version and completed), it freezes once the admin confirms the
   order, participants are notified when a tier unlocks, and the admin forms create and edit tiers.
+- **The session cookie was the shared default `PHPSESSID` at path `/`**, so every PHP app on the same
+  host (e.g. all your MAMP projects) shared one session: logging out of one logged you out of the others.
+  It now has its own name (`BUYPOOL_SESSION`) and is valid only under this installation's `api/` folder.
 - **The agency's commission was recorded ~10% too high** (calculated on a total that already included it).
 - Smaller: the wallet's "this month" figure was always the all-time total (misspelt variable); setting a
   user's role/status to the value it already had answered "not found"; password-reset requests could flood
@@ -75,7 +78,7 @@ frontend/  (vanilla JS, hash router)   ──  fetch + session cookie  ──▶
                                                                          Stripe (checkout + webhook), Google / Microsoft sign-in
 ```
 
-- **Sessions, not tokens.** Login sets a PHP session cookie (`HttpOnly`, `SameSite=Lax`). The
+- **Sessions, not tokens.** Login sets a PHP session cookie (`BUYPOOL_SESSION`, `HttpOnly`, `SameSite=Lax`, scoped to the API folder). The
   frontend and API are served from the same origin, so no CORS is needed.
 - **One response shape:** `{"ok": true, "dati": ...}` or `{"ok": false, "errore": {"codice", "messaggio"}}`.
 - **Three roles:** `cliente`, `fornitore`, `admin`. Admin routes answer 401 if you are not logged in
@@ -166,11 +169,11 @@ php tests/test_prezzi.php         # 32 checks: tier pricing rules, incl. 200,000
 php tests/test_ripartizione.php   # 12 checks: piece allocation, incl. 500,000 random cases
 
 # end to end: real HTTP, real sessions
-php tests/test_api.php http://localhost:8888/<folder>/api              # 122 checks: security, customer journey, admin, tiers, privileges, contract with the frontend
+php tests/test_api.php http://localhost:8888/<folder>/api              # 125 checks: security, customer journey, admin, tiers, privileges, contract with the frontend
 php tests/test_ciclo_campagna.php http://localhost:8888/<folder>/api   # 46 checks: goal reached → paid (signed webhooks, exact money) → supplier → QR pickup
 ```
 
-That is **222 checks**. Each fix above was also confirmed the other way round: temporarily reverting it
+That is **225 checks**. Each fix above was also confirmed the other way round: temporarily reverting it
 makes the matching test fail. On top of that, every SQL statement in the code is prepared against the
 schema (no missing tables or columns).
 

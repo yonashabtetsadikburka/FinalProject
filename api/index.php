@@ -9,7 +9,13 @@ declare(strict_types=1);
 ini_set('display_errors', '0');       // gli errori nel log, mai nella risposta
 error_reporting(E_ALL);
 
+// Cookie di sessione PROPRIO di questa app: nome dedicato e valido solo sotto questa cartella
+// dell'API. Con il predefinito (PHPSESSID, path /) tutte le app PHP sullo stesso host, per
+// esempio in MAMP, condividono la stessa sessione: il logout di una butta fuori dall'altra.
+session_name('BUYPOOL_SESSION');
 session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/') ?: '/',
     'httponly' => true,
     'samesite' => 'Lax',
     'secure'   => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),

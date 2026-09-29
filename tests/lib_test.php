@@ -39,6 +39,16 @@ class Client
         $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         return [$http, json_decode((string)$raw, true) ?? ['_raw' => $raw]];
     }
+    /** Intestazioni della risposta (per controllare i cookie). */
+    public function intestazioni(string $m, string $path, $body = null): string
+    {
+        $ch = curl_init($this->base . $path);
+        curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $m, CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_TIMEOUT => 20,
+            CURLOPT_POSTFIELDS => $body === null ? null : json_encode($body)]);
+        $out = (string)curl_exec($ch);
+        return substr($out, 0, (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE));
+    }
     public function login(string $email): array
     {
         return $this->call('POST', '/login', ['email' => $email, 'password' => 'Demo1234!']);
