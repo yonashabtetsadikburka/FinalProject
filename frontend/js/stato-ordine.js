@@ -8,7 +8,8 @@ export const STATI_ORDINE = {
   fornitore: { label: 'Ordine al fornitore', variant: 'info' },
   pronto: { label: 'Pronto per il ritiro', variant: 'default' },
   finale: { label: 'Ritirato', variant: 'success' },
-  fallita: { label: 'Non riuscita', variant: 'secondary' }
+  fallita: { label: 'Non riuscita', variant: 'secondary' },
+  azione: { label: 'Azione richiesta', variant: 'destructive' }
 };
 
 export const STATI_COLLETTA_AVANZATI = ['ordine_pronto', 'ordine_fornitore', 'consegnata'];
@@ -23,6 +24,7 @@ export function deliveryType(p) {
 export function statoOrdine(p) {
   if (['annullata', 'rimborsata'].includes(p.stato)) return 'fallita';
   if (['fallita', 'annullata'].includes(p.stato_colletta)) return 'fallita';
+  if (p.stato === 'azione_richiesta') return 'azione';
   if (p.stato_qr === 'scansionato' || ['ritirata', 'consegnata'].includes(p.consegna_stato)) return 'finale';
   if (p.stato !== 'pagata') return 'attesa';
   if (deliveryType(p) === 'ritiro') return 'pronto';

@@ -14,6 +14,7 @@ const FILTRO_STATI_PART = [
   ['fornitore', 'Ordine al fornitore'],
   ['pronto', 'Pronto per il ritiro'],
   ['finale', 'Ritirato'],
+  ['azione', 'Azione richiesta'],
   ['fallita', 'Non riuscita']
 ];
 
@@ -43,7 +44,7 @@ function partCardHtml(p) {
           ${fallita ? `
           <div style="display:flex;align-items:center;gap:var(--space-2);">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--color-text-secondary);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            <span class="text-sm text-secondary">Obiettivo non raggiunto — nessun addebito effettuato</span>
+            <span class="text-sm text-secondary">Il gruppo non ha raggiunto il minimo — acconto rimborsato al 100%</span>
           </div>` : `
           <div style="display:flex;gap:var(--space-4);">
             <div><div class="text-xs text-secondary">Quantita</div><div class="font-medium text-sm">${p.quantita} pezzi</div></div>

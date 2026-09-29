@@ -29,7 +29,7 @@ export async function NotifichePage() {
         <div class="notification-icon">${NOTIFICA_ICONS[n.tipo] || NOTIFICA_ICONS['SISTEMA']}</div>
         <div class="notification-content">
           <div class="notification-message">${n.messaggio}</div>
-          <div class="notification-time">${new Date(n.data_creazione).toLocaleDateString('it-IT')}</div>
+          <div class="notification-time">${new Date(n.data_creazione).toLocaleDateString('it-IT')} - ${new Date(n.data_creazione).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
         ${!n.letta ? '<div class="notification-dot"></div>' : ''}
       </div>

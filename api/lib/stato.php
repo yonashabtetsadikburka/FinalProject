@@ -2,6 +2,38 @@
 declare(strict_types=1);
 
 /**
+ * Minimo effettivo della campagna: primo scaglione se presente, altrimenti MOQ.
+ */
+function minimo_colletta(array $c, array $scaglioni = []): int
+{
+    if (!empty($scaglioni) && isset($scaglioni[0]['soglia'])) {
+        return max(1, (int)$scaglioni[0]['soglia']);
+    }
+    return max(1, (int)($c['quantita_minima'] ?? 1));
+}
+
+/**
+ * Stato campagna per la UI pubblica, SEPARATO dallo stato delle partecipazioni:
+ * - 'in_corso': timer attivo, indipendentemente dal minimo (anche con confermate)
+ * - 'conclusa': timer scaduto + minimo raggiunto + chiusura elaborata (o stati avanzati)
+ * - 'non_riuscita': fallita/annullata, oppure scaduta senza minimo
+ * - 'in_chiusura': scaduta + minimo raggiunto ma chiusura non ancora eseguita
+ * Non persiste nulla: deriva da stato interno, scadenza e chiusura_data.
+ */
+function stato_campagna_display(array $c, array $scaglioni = []): string
+{
+    $stato = $c['stato'] ?? 'in_corso';
+    if (in_array($stato, ['ordine_pronto', 'ordine_fornitore', 'consegnata'], true)) return 'conclusa';
+    if (in_array($stato, ['fallita', 'annullata'], true)) return 'non_riuscita';
+    $ts = strtotime($c['data_limite'] ?? '');
+    $scaduta = $ts !== false && $ts < time();
+    $raggiunto = ((int)($c['quantita_attuale'] ?? 0)) >= minimo_colletta($c, $scaglioni);
+    if (!$scaduta) return 'in_corso';
+    if (!$raggiunto) return 'non_riuscita';
+    return !empty($c['chiusura_data']) ? 'conclusa' : 'in_chiusura';
+}
+
+/**
  * ============================================================
  *  MACCHINA A STATI DELLE CAMPAGNE
  * ============================================================
@@ -65,7 +97,7 @@ function ricalcola_stato(int $campagna_id): string
         return $nuovoStato;
 
     } catch (Throwable $e) {
-        if ($ownTransaction) $pdo->rollBack();
+        if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
 }

@@ -10,9 +10,9 @@ function sql_collette(): string
     return
     'SELECT c.id, c.stato, c.data_limite, c.data_inizio, c.quantita_minima, c.quantita_attuale,
             c.regola_arrotondamento, c.prezzo_base, c.prezzo_corrente,
-            c.percentuale_commissione, c.data_conferma,
+            c.percentuale_commissione, c.data_conferma, c.chiusura_data,
             c.id_prodotto, c.id_aperta_da, c.id_referente, c.id_sede,
-            pr.nome AS prodotto, pr.prezzo_unitario, pr.quantita_minima AS lotto_prodotto,
+            pr.nome AS prodotto, pr.descrizione AS descrizione_prodotto, pr.prezzo_unitario, pr.quantita_minima AS lotto_prodotto,
             pr.id_categoria, cat.nome AS categoria,
             (SELECT url FROM immagini_prodotto WHERE id_prodotto = pr.id ORDER BY principale DESC, ordine ASC LIMIT 1) AS immagine,
             (SELECT CONCAT("[", GROUP_CONCAT(JSON_OBJECT("id", id, "url", url, "principale", principale, "ordine", ordine) ORDER BY principale DESC, ordine ASC SEPARATOR ","), "]") FROM immagini_prodotto WHERE id_prodotto = pr.id) AS immagini,
@@ -63,18 +63,61 @@ function normalizza_colletta(array $r): array
 
 function campagne_elenco(): void
 {
-    richiedi_login();
+    // Pubblico: la lista non contiene dati personali, visibile anche agli ospiti.
     db()->exec('SET SESSION group_concat_max_len = 100000');
     $st = db()->query(sql_collette() . ' GROUP BY c.id ORDER BY c.data_limite ASC');
     $out = array_map('normalizza_colletta', $st->fetchAll());
 
     foreach ($out as &$c) { $c['stato'] = ricalcola_stato($c['id']); }
+    unset($c);
+    foreach ($out as $c) {
+        if ($c['stato'] === 'fallita') notifica_esito_fallita((int)$c['id']);
+    }
+
+    // Scaglioni + rating fornitore in 2 query aggregate (per card lista)
+    $ids = array_map(fn($c) => (int)$c['id'], $out);
+    $fids = array_values(array_unique(array_map(fn($c) => (int)($c['fornitore_id'] ?? 0), $out)));
+    $scaglioni = [];
+    if (!empty($ids)) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $stS = db()->prepare(
+            "SELECT id_colletta, soglia_partecipanti AS soglia, prezzo_unitario AS prezzo
+               FROM scaglioni_prezzo WHERE id_colletta IN ($ph) ORDER BY id_colletta, soglia_partecipanti ASC"
+        );
+        $stS->execute($ids);
+        foreach ($stS->fetchAll() as $s) {
+            $scaglioni[(int)$s['id_colletta']][] = ['soglia' => (int)$s['soglia'], 'prezzo' => (float)$s['prezzo']];
+        }
+    }
+    $rating = [];
+    if (!empty($fids)) {
+        $ph = implode(',', array_fill(0, count($fids), '?'));
+        $stR = db()->prepare(
+            "SELECT id_fornitore, COUNT(*) AS tot, AVG(voto) AS media
+               FROM recensioni_fornitore WHERE id_fornitore IN ($ph) GROUP BY id_fornitore"
+        );
+        $stR->execute($fids);
+        foreach ($stR->fetchAll() as $r) {
+            $tot = (int)$r['tot'];
+            $rating[(int)$r['id_fornitore']] = [
+                'media' => $tot > 0 ? round((float)$r['media'], 1) : null,
+                'totale' => $tot,
+            ];
+        }
+    }
+    foreach ($out as &$c) {
+        $c['scaglioni'] = $scaglioni[$c['id']] ?? [];
+        $c['fornitore_rating'] = $rating[(int)($c['fornitore_id'] ?? 0)] ?? ['media' => null, 'totale' => 0];
+        $c['stato_campagna'] = stato_campagna_display($c, $c['scaglioni']);
+    }
+    unset($c);
     json_ok($out);
 }
 
 function campagne_dettaglio(int $id): void
 {
-    richiedi_login();
+    // Pubblico per gli ospiti: senza login si omette la lista partecipanti.
+    $io = utente_corrente_id();
     db()->exec('SET SESSION group_concat_max_len = 100000');
     $st = db()->prepare(sql_collette() . ' WHERE c.id = ? GROUP BY c.id');
     $st->execute([$id]);
@@ -83,6 +126,18 @@ function campagne_dettaglio(int $id): void
 
     $c = normalizza_colletta($c);
     $c['stato'] = ricalcola_stato($id);
+    if ($c['stato'] === 'fallita') notifica_esito_fallita($id);
+
+    // Scaglioni prezzo della campagna (soglia -> prezzo), per il box vetrina
+    $stS = db()->prepare(
+        'SELECT soglia_partecipanti AS soglia, prezzo_unitario AS prezzo
+           FROM scaglioni_prezzo WHERE id_colletta = ? ORDER BY soglia_partecipanti ASC'
+    );
+    $stS->execute([$id]);
+    $c['scaglioni'] = array_map(function ($s) {
+        return ['soglia' => (int)$s['soglia'], 'prezzo' => (float)$s['prezzo']];
+    }, $stS->fetchAll());
+    $c['stato_campagna'] = stato_campagna_display($c, $c['scaglioni']);
 
     // Rating fornitore: media + numero recensioni
     $stR = db()->prepare(
@@ -94,6 +149,22 @@ function campagne_dettaglio(int $id): void
         'media' => $rr && $rr['tot'] > 0 ? round((float)$rr['media'], 1) : null,
         'totale' => (int)($rr['tot'] ?? 0),
     ];
+
+    // Info fornitore per la vetrina (evita chiamate extra dal frontend)
+    $stF = db()->prepare(
+        'SELECT nome_azienda AS nome, data_partnership,
+                (SELECT COUNT(DISTINCT co.id) FROM prodotti pr2
+                   JOIN collette co ON co.id_prodotto = pr2.id
+                  WHERE pr2.id_fornitore = f.id) AS num_campagne
+           FROM fornitori f WHERE f.id = ?'
+    );
+    $stF->execute([(int)($c['fornitore_id'] ?? 0)]);
+    $fr = $stF->fetch();
+    $c['fornitore_info'] = $fr ? [
+        'nome' => (string)$fr['nome'],
+        'data_partnership' => $fr['data_partnership'],
+        'num_campagne' => (int)$fr['num_campagne'],
+    ] : null;
 
     // Rating campagna: media + numero recensioni della colletta
     $stRc = db()->prepare(
@@ -124,6 +195,12 @@ function campagne_dettaglio(int $id): void
 
     $mio = utente_corrente_id();
     $c['mia_partecipazione'] = null;
+    if ($mio === null) {
+        // Ospite: niente lista partecipanti (privacy), solo conteggi.
+        $c['partecipazioni'] = [];
+        json_ok($c);
+        return;
+    }
     foreach ($c['partecipazioni'] as $p) {
         if ($p['id_utente'] === $mio) {
             $c['mia_partecipazione'] = [
@@ -141,6 +218,288 @@ function campagne_dettaglio(int $id): void
     json_ok($c);
 }
 
+/**
+ * Chiusura campagna alla scadenza: addebita off_session il saldo alle confermate.
+ * POST /campagne/{id}/chiusura — admin in sessione OPPURE cron con ?secret= (config chiusura_secret).
+ * Body opzionale: { "id_colletta": N } per chiudere una singola campagna (bypass id route).
+ * Idempotente per colletta (colonna chiusura_data).
+ *
+ * Cron esempio (ogni ora):
+ *   curl -s -X POST "http://localhost:8888/buypool/api/campagne/chiusura?secret=..." 
+ */
+function campagne_chiusura(int $idRoute = 0): void
+{
+    $cfg = require __DIR__ . '/../config.php';
+    $secret = (string)($cfg['chiusura_secret'] ?? '');
+    $dato = $_GET['secret'] ?? '';
+    if (!sono_admin()) {
+        if ($secret === '' || !hash_equals($secret, (string)$dato)) {
+            throw new AppError('NON_AUTORIZZATO', 'Solo admin o cron autorizzato', 403);
+        }
+    }
+    $d = corpo();
+    $solo = isset($d['id_colletta']) ? (int)$d['id_colletta'] : $idRoute;
+
+    $pdo = db();
+    if ($solo > 0) {
+        $st = $pdo->prepare('SELECT id, data_limite FROM collette WHERE id = ?');
+        $st->execute([$solo]);
+        $una = $st->fetch();
+        if (!$una) throw new AppError('CAMPAGNA_INESISTENTE', 'Campagna non trovata', 404);
+        if (strtotime($una['data_limite'] ?? '') > time()) {
+            throw new AppError('CHIUSURA_ANTICIPATA', 'Chiusura possibile solo dopo la scadenza', 409);
+        }
+        $ids = [$solo];
+    } else {
+        $st = $pdo->query(
+            "SELECT id FROM collette
+              WHERE data_limite <= NOW() AND chiusura_data IS NULL
+                AND stato NOT IN ('consegnata','annullata','ordine_pronto','ordine_fornitore')"
+        );
+        $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    $riepilogo = ['campagne' => 0, 'pagate' => 0, 'azione_richiesta' => 0, 'rimborsate' => 0, 'saltate' => 0, 'gia_chiusa' => false];
+    foreach ($ids as $cid) {
+        $r = chiusura_colletta((int)$cid);
+        $riepilogo['campagne']++;
+        $riepilogo['pagate'] += $r['pagate'];
+        $riepilogo['azione_richiesta'] += $r['azione_richiesta'];
+        $riepilogo['rimborsate'] += $r['rimborsate'];
+        $riepilogo['saltate'] += $r['saltate'];
+        if (!empty($r['gia_chiusa'])) $riepilogo['gia_chiusa'] = true;
+    }
+    json_ok($riepilogo);
+}
+
+/**
+ * Chiude una singola colletta: per ogni prenotazione 'confermata' addebita il
+ * saldo via Stripe off_session (PM salvato con l'acconto). Fallimento ->
+ * stato 'azione_richiesta' + notifica PAGAMENTO_FALLITO (retry via /pagamento/riprova).
+ */
+function chiusura_colletta(int $cid): array
+{
+    $pdo = db();
+    $res = ['pagate' => 0, 'azione_richiesta' => 0, 'rimborsate' => 0, 'saltate' => 0, 'gia_chiusa' => false];
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare('SELECT id, stato, chiusura_data, data_limite, quantita_attuale FROM collette WHERE id = ? FOR UPDATE');
+        $st->execute([$cid]);
+        $c = $st->fetch();
+        if (!$c) {
+            $pdo->rollBack();
+            $res['saltate']++;
+            return $res;
+        }
+        if ($c['chiusura_data'] !== null) {
+            $pdo->rollBack();
+            $res['saltate']++;
+            $res['gia_chiusa'] = true;
+            return $res;
+        }
+        $stato = ricalcola_stato($cid);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("chiusura colletta #$cid errore lettura: " . $e->getMessage());
+        $res['saltate']++;
+        return $res;
+    }
+
+    if (in_array($stato, ['fallita', 'annullata'], true)) {
+        $res['rimborsate'] = chiusura_rimborsi($cid);
+        $pdo->prepare('UPDATE collette SET chiusura_data = NOW() WHERE id = ? AND chiusura_data IS NULL')->execute([$cid]);
+        return $res;
+    }
+    if (!in_array($stato, ['in_corso', 'riuscita'], true)) {
+        $res['saltate']++;
+        return $res;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare(
+            'SELECT id, quantita_attuale, quantita_minima, data_limite, prezzo_corrente, percentuale_commissione
+               FROM collette WHERE id = ? FOR UPDATE'
+        );
+        $st->execute([$cid]);
+        $c = $st->fetch();
+        $st = $pdo->prepare(
+            "SELECT p.id, p.id_utente, p.quantita, p.stato, p.importo_acconto, pr.nome AS prodotto
+               FROM prenotazioni p
+               JOIN collette c ON c.id = p.id_colletta
+               JOIN prodotti pr ON pr.id = c.id_prodotto
+              WHERE p.id_colletta = ? AND p.stato = 'confermata' FOR UPDATE"
+        );
+        $st->execute([$cid]);
+        $confermate = $st->fetchAll();
+        $st = $pdo->prepare(
+            'SELECT soglia_partecipanti AS soglia, prezzo_unitario AS prezzo
+               FROM scaglioni_prezzo WHERE id_colletta = ? ORDER BY soglia_partecipanti ASC'
+        );
+        $st->execute([$cid]);
+        $scaglioni = array_map(
+            fn($s) => ['soglia' => (int)$s['soglia'], 'prezzo' => (float)$s['prezzo']],
+            $st->fetchAll()
+        );
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("chiusura colletta #$cid errore lettura: " . $e->getMessage());
+        $res['saltate']++;
+        return $res;
+    }
+
+    $totale = (int)$c['quantita_attuale'];
+    $minimo = !empty($scaglioni) ? (int)$scaglioni[0]['soglia'] : (int)$c['quantita_minima'];
+    if ($totale < $minimo) {
+        $res['rimborsate'] = chiusura_rimborsi($cid);
+        $pdo->prepare('UPDATE collette SET chiusura_data = NOW() WHERE id = ? AND chiusura_data IS NULL')->execute([$cid]);
+        return $res;
+    }
+
+    // Scaglione più alto effettivamente raggiunto (non il primo)
+    $prezzoFinale = (float)$c['prezzo_corrente'];
+    foreach ($scaglioni as $s) {
+        if ($totale >= $s['soglia']) $prezzoFinale = (float)$s['prezzo'];
+    }
+    $comm = (float)$c['percentuale_commissione'];
+
+    $cfg = require __DIR__ . '/../config.php';
+    $stripe = new \Stripe\StripeClient($cfg['stripe_secret_key']);
+    $prodotto = '';
+    foreach ($confermate as $p) {
+        $pid = (int)$p['id'];
+        $uid = (int)$p['id_utente'];
+        $prodotto = (string)($p['prodotto'] ?? $prodotto ?: 'un prodotto');
+        // Saldo = qty × prezzo finale × (1+commissione) − acconto già versato
+        $saldo = round((int)$p['quantita'] * $prezzoFinale * (1 + $comm / 100) - (float)($p['importo_acconto'] ?? 0), 2);
+        if ($saldo <= 0) {
+            $pdo->beginTransaction();
+            try {
+                saldo_completa($pdo, $pid, $cid, $uid, null, 0.0);
+                $pdo->commit();
+                $res['pagate']++;
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log("chiusura colletta #$cid prenotazione #$pid saldo-zero fallita: " . $e->getMessage());
+                $res['saltate']++;
+            }
+            continue;
+        }
+        $stPm = $pdo->prepare(
+            "SELECT stripe_payment_method, stripe_customer_id FROM (
+                SELECT pg.stripe_payment_method AS stripe_payment_method, u.stripe_customer_id AS stripe_customer_id
+                  FROM pagamenti pg JOIN prenotazioni p2 ON p2.id = pg.id_prenotazione
+                  JOIN utenti u ON u.id = p2.id_utente
+                 WHERE pg.id_prenotazione = ? AND pg.tipo_pagamento = 'acconto'
+                 ORDER BY pg.id DESC LIMIT 1
+             ) t"
+        );
+        $stPm->execute([$pid]);
+        $pm = $stPm->fetch();
+        $pmId = $pm['stripe_payment_method'] ?? null;
+        $customerId = $pm['stripe_customer_id'] ?? null;
+        if (!$pmId || !$customerId) {
+            segna_azione_richiesta($cid, $pid, $uid, (string)($p['prodotto'] ?? 'un prodotto'), $saldo, 'Metodo di pagamento mancante');
+            $res['azione_richiesta']++;
+            continue;
+        }
+        try {
+            // Senza redirect: l'account ha metodi con redirect abilitati,
+            // quindi li escludiamo (l'addebito off_session non può reindirizzare).
+            $pi = $stripe->paymentIntents->create([
+                'amount' => (int)round($saldo * 100),
+                'currency' => 'eur',
+                'customer' => $customerId,
+                'payment_method' => $pmId,
+                'off_session' => true,
+                'confirm' => true,
+                'automatic_payment_methods' => ['enabled' => true, 'allow_redirects' => 'never'],
+                'metadata' => [
+                    'tipo' => 'saldo',
+                    'prenotazione_id' => $pid,
+                    'colletta_id' => $cid,
+                    'utente_id' => $uid,
+                ],
+            ]);
+        } catch (\Stripe\Exception\CardException $e) {
+            $code = $e->getError()->code ?? '';
+            $msg = $code === 'authentication_required'
+                ? 'La banca richiede una nuova autorizzazione per addebitare il saldo.'
+                : ('Addebito saldo fallito: ' . $e->getMessage());
+            segna_azione_richiesta($cid, $pid, $uid, (string)($p['prodotto'] ?? 'un prodotto'), $saldo, $msg);
+            $res['azione_richiesta']++;
+            continue;
+        } catch (Throwable $e) {
+            segna_azione_richiesta($cid, $pid, $uid, (string)($p['prodotto'] ?? 'un prodotto'), $saldo, 'Addebito saldo fallito: ' . $e->getMessage());
+            $res['azione_richiesta']++;
+            continue;
+        }
+        if (($pi->status ?? '') === 'succeeded') {
+            $pdo->beginTransaction();
+            try {
+                saldo_completa($pdo, $pid, $cid, $uid, (string)$pi->id, $saldo);
+                $pdo->commit();
+                $res['pagate']++;
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log("chiusura colletta #$cid finalize saldo #$pid fallito: " . $e->getMessage());
+                $res['saltate']++;
+            }
+        } else {
+            segna_azione_richiesta($cid, $pid, $uid, (string)($p['prodotto'] ?? 'un prodotto'), $saldo, 'Addebito saldo non completato (stato Stripe: ' . ($pi->status ?? '?') . ').');
+            $res['azione_richiesta']++;
+        }
+    }
+
+    // Catena admin: pronta per la conferma manuale di invio al fornitore
+    $pdo->prepare("UPDATE collette SET stato = 'ordine_pronto', data_agg_stato = NOW(), chiusura_data = NOW() WHERE id = ? AND chiusura_data IS NULL")->execute([$cid]);
+    return $res;
+}
+
+/**
+ * Rimborsa gli acconti versati di una campagna fallita/sotto-minimo.
+ * Ritorna il numero di rimborsi eseguiti. Idempotente (salta rimborsate).
+ */
+function chiusura_rimborsi(int $cid): int
+{
+    $pdo = db();
+    $cfg = require __DIR__ . '/../config.php';
+    $stripe = new \Stripe\StripeClient($cfg['stripe_secret_key']);
+    $n = 0;
+    $st = $pdo->prepare(
+        "SELECT p.id, p.id_utente, p.importo_acconto, pg.stripe_payment_intent_id
+           FROM prenotazioni p
+           LEFT JOIN pagamenti pg ON pg.id_prenotazione = p.id AND pg.tipo_pagamento = 'acconto'
+          WHERE p.id_colletta = ? AND p.stato IN ('prenotata','confermata') AND COALESCE(p.importo_acconto, 0) > 0"
+    );
+    $st->execute([$cid]);
+    foreach ($st->fetchAll() as $p) {
+        $pid = (int)$p['id'];
+        try {
+            if (!empty($p['stripe_payment_intent_id'])) {
+                $stripe->refunds->create(['payment_intent' => $p['stripe_payment_intent_id']]);
+            }
+            $pdo->prepare("UPDATE prenotazioni SET stato = 'rimborsata' WHERE id = ? AND stato IN ('prenotata','confermata')")->execute([$pid]);
+            $n++;
+        } catch (Throwable $e) {
+            error_log("chiusura rimborsi colletta #$cid prenotazione #$pid fallito: " . $e->getMessage());
+        }
+    }
+    return $n;
+}
+
+/** Marca azione_richiesta + notifica con retry. */
+function segna_azione_richiesta(int $cid, int $pid, int $uid, string $prodotto, float $saldo, string $dettaglio): void
+{
+    $pdo = db();
+    $pdo->prepare("UPDATE prenotazioni SET stato = 'azione_richiesta' WHERE id = ?")->execute([$pid]);
+    $pdo->prepare(
+        'INSERT INTO notifiche (id_utente, tipo, titolo, messaggio, tipo_riferimento, id_riferimento)
+         VALUES (?, \'PAGAMENTO_FALLITO\', \'Azione richiesta\', ?, \'prenotazione\', ?)'
+    )->execute([$uid, "Non siamo riusciti ad addebitare il saldo di €" . number_format($saldo, 2, ',', '.') . " per \"$prodotto\". $dettaglio Completa il pagamento dalla pagina I miei ordini.", $pid]);
+}
 /**
  * Elimina una campagna. Solo admin, solo se senza pagamenti (qualsiasi stato).
  * A cascata: prenotazioni, ordini_fornitore, scaglioni, qr. Notifiche e prodotti restano.
@@ -167,6 +526,38 @@ function campagne_elimina(int $id): void
 
     db()->prepare('DELETE FROM collette WHERE id = ?')->execute([$id]);
     json_ok(['eliminata' => true]);
+}
+
+/**
+ * Valida e normalizza gli scaglioni prezzo [{soglia, prezzo}].
+ * Accetta array o stringa JSON. Ritorna lista ordinata per soglia.
+ * Array vuoto = nessun box scaglioni (valido).
+ */
+function valida_scaglioni($raw): array
+{
+    if (is_string($raw)) {
+        $raw = trim($raw);
+        if ($raw === '') return [];
+        $dec = json_decode($raw, true);
+        if (!is_array($dec)) throw new AppError('SCAGLIONI_NON_VALIDI', 'Formato scaglioni non valido');
+        $raw = $dec;
+    }
+    if (!is_array($raw)) throw new AppError('SCAGLIONI_NON_VALIDI', 'Formato scaglioni non valido');
+    if (count($raw) > 10) throw new AppError('SCAGLIONI_NON_VALIDI', 'Massimo 10 scaglioni');
+    $out = [];
+    $viste = [];
+    foreach ($raw as $s) {
+        if (!is_array($s)) throw new AppError('SCAGLIONI_NON_VALIDI', 'Formato scaglioni non valido');
+        $soglia = (int)($s['soglia'] ?? $s['soglia_partecipanti'] ?? 0);
+        $prezzo = (float)($s['prezzo'] ?? $s['prezzo_unitario'] ?? 0);
+        if ($soglia < 1) throw new AppError('SCAGLIONI_NON_VALIDI', 'Ogni soglia deve essere almeno 1');
+        if ($prezzo <= 0) throw new AppError('SCAGLIONI_NON_VALIDI', 'Ogni prezzo deve essere maggiore di 0');
+        if (isset($viste[$soglia])) throw new AppError('SCAGLIONI_NON_VALIDI', 'Soglie duplicate non ammesse');
+        $viste[$soglia] = true;
+        $out[] = ['soglia' => $soglia, 'prezzo' => round($prezzo, 2)];
+    }
+    usort($out, fn($a, $b) => $a['soglia'] <=> $b['soglia']);
+    return $out;
 }
 
 /**
@@ -249,6 +640,19 @@ function campagne_crea(): void
             round($prezzoBaseC, 2), round($prezzoCorrC, 2), round($comm, 2),
         ]);
         $id = (int)$pdo->lastInsertId();
+
+        // Scaglioni prezzo opzionali (JSON in campo 'scaglioni')
+        if (isset($d['scaglioni'])) {
+            $scaglioni = valida_scaglioni($d['scaglioni']);
+            if (!empty($scaglioni)) {
+                $stS = $pdo->prepare(
+                    'INSERT INTO scaglioni_prezzo (id_colletta, soglia_partecipanti, prezzo_unitario) VALUES (?,?,?)'
+                );
+                foreach ($scaglioni as $s) {
+                    $stS->execute([$id, $s['soglia'], $s['prezzo']]);
+                }
+            }
+        }
 
         // Foto opzionali (foto[] multiplo): prima come principale
         $files = [];
@@ -428,8 +832,9 @@ function invia_ordine_fornitore_al(int $colletta_id, ?int $id_admin): array
 /**
  * Modifica una campagna (solo admin). POST /campagne/{id}/modifica.
  * Accetta JSON o multipart (per upload foto).
- * Campi: data_limite, quantita_minima, prezzo_corrente, prezzo_base, percentuale_commissione, foto (file).
+ * Campi: data_limite, quantita_minima, prezzo_corrente, prezzo_base, percentuale_commissione, foto (file), scaglioni (JSON).
  * Bloccato se ordine gia' partito (ordine_fornitore/consegnata).
+ * Gli scaglioni non sono modificabili se la campagna ha gia' adesioni.
  */
 function campagne_modifica(int $id): void
 {
@@ -525,6 +930,26 @@ function campagne_modifica(int $id): void
             $pdo->prepare('UPDATE collette SET ' . implode(', ', $campi) . ' WHERE id = ?')->execute($par);
         }
 
+        // Sostituzione scaglioni: bloccata se la campagna ha gia' adesioni
+        if (isset($d['scaglioni']) && $d['scaglioni'] !== '') {
+            $scaglioni = valida_scaglioni($d['scaglioni']);
+            $stN = $pdo->prepare('SELECT COUNT(*) FROM prenotazioni WHERE id_colletta = ?');
+            $stN->execute([$id]);
+            if ((int)$stN->fetchColumn() > 0) {
+                $pdo->rollBack();
+                throw new AppError('SCAGLIONI_BLOCCATI', 'Scaglioni non modificabili: la campagna ha gia\' adesioni', 409);
+            }
+            $pdo->prepare('DELETE FROM scaglioni_prezzo WHERE id_colletta = ?')->execute([$id]);
+            if (!empty($scaglioni)) {
+                $stS = $pdo->prepare(
+                    'INSERT INTO scaglioni_prezzo (id_colletta, soglia_partecipanti, prezzo_unitario) VALUES (?,?,?)'
+                );
+                foreach ($scaglioni as $s) {
+                    $stS->execute([$id, $s['soglia'], $s['prezzo']]);
+                }
+            }
+        }
+
         // Sostituzione foto principale del prodotto collegato
         if ($hasFoto) {
             $nuova = fornitore_salva_foto($_FILES['foto']);
@@ -580,7 +1005,8 @@ function campagne_modifica(int $id): void
             }
         }
 
-        if (empty($campi) && !$hasFoto && empty($extraFoto)) {
+        $haScaglioni = isset($d['scaglioni']) && $d['scaglioni'] !== '';
+        if (empty($campi) && !$hasFoto && empty($extraFoto) && !$haScaglioni) {
             $pdo->rollBack();
             throw new AppError('NESSUN_CAMPO', 'Nessun campo da aggiornare');
         }

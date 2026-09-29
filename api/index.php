@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+// Tutte le date nel DB sono wall-clock locali: PHP deve ragionare nello stesso
+// fuso orario, altrimenti i confronti con le scadenze (strtotime/time) sfasano
+// di ore rispetto a MySQL NOW() e al countdown nel browser.
+date_default_timezone_set('Europe/Rome');
+
 /**
  * Front controller: tutte le richieste passano da qui.
  * URL base con MAMP:  http://localhost:8888/buypool/api/
@@ -89,6 +94,12 @@ $rotte = [
     ['GET',    'wallet/statistiche',                'wallet_statistiche'],
     ['POST',   'pagamento/checkout',                'pagamento_checkout'],
     ['GET',    'pagamento/stato',                   'pagamento_stato'],
+    ['GET',    'pagamento/config',                  'pagamento_config'],
+    ['POST',   'pagamento/acconto-intent',          'pagamento_acconto_intent'],
+    ['POST',   'pagamento/acconto-checkout',        'pagamento_acconto_checkout'],
+    ['POST',   'pagamento/riprova',                 'pagamento_riprova'],
+    ['POST',   'campagne/{id}/chiusura',            'campagne_chiusura'],
+    ['POST',   'campagne/chiusura',                 'campagne_chiusura'],
     ['GET',    'notifiche',                         'notifiche_elenco'],
     ['GET',    'notifiche/conta',                   'notifiche_conta'],
     ['PUT',    'notifiche/{id}/letta',              'notifiche_segna_letta'],

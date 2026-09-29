@@ -1,7 +1,8 @@
 import { apiGet } from '../api.js';
-import { API_URL } from '../constants.js';
+import { API_URL, ACCONTO_PERCENT } from '../constants.js';
 import { Progress } from '../components/progress.js';
 import { startCountdowns, formatCountdown } from '../countdown.js';
+import { starsMedia } from '../stars.js';
 
 function imgUrl(path) {
   if (!path) return '';
@@ -28,15 +29,25 @@ const isScaduta = (c) => {
 const isInCorso = (c) => c.stato === 'in_corso' && !haRaggiuntoSoglia(c) && !isScaduta(c);
 const isConclusa = (c) => haRaggiuntoSoglia(c) || isScaduta(c) || ['fallita', 'consegnata', 'annullata'].includes(c.stato);
 
+/** Stato campagna per filtro/badge: usa il campo calcolato dal backend (separato dalle partecipazioni). */
+function displayCampagna(c) {
+  if (c.stato_campagna) return c.stato_campagna;
+  if (isInCorso(c)) return 'in_corso';
+  if (['fallita', 'annullata'].includes(c.stato) || (isScaduta(c) && !haRaggiuntoSoglia(c))) return 'non_riuscita';
+  return 'conclusa';
+}
+
 function campaignCardHtml(c) {
   const qty = parseInt(c.quantita_attuale) || 0;
-  const min = parseInt(c.quantita_minima) || 1;
-  const percentage = Math.min(100, Math.round((qty / min) * 100));
+  const scaglioniCard = Array.isArray(c.scaglioni) ? c.scaglioni : [];
+  const minimo = scaglioniCard.length > 0 ? scaglioniCard[0].soglia : (parseInt(c.quantita_minima) || 1);
+  const confermata = qty >= minimo;
+  const percentage = Math.min(100, Math.round((qty / minimo) * 100));
   const base = parseFloat(c.prezzo_base) || 0;
   const curr = parseFloat(c.prezzo_corrente) || 0;
   const discount = base > 0 ? Math.round((1 - curr / base) * 100) : 0;
-  const pubblicataTxt = c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : null;
-  const conclusa = isConclusa(c);
+  const conclusa = displayCampagna(c) !== 'in_corso';
+  const rating = c.fornitore_rating || { media: null, totale: 0 };
 
   const imgs = (c.immagini && c.immagini.length ? c.immagini.map(i => i.url) : (c.immagine ? [c.immagine] : []));
   cardImgs[c.id] = imgs;
@@ -58,20 +69,28 @@ function campaignCardHtml(c) {
       <div class="campaign-card-body">
         <div class="campaign-card-title">${c.prodotto || 'Prodotto'}</div>
         ${discount > 0 ? `<div style="margin-bottom: var(--space-2);"><span class="discount-badge">-${discount}% di sconto</span></div>` : ''}
-        <div class="campaign-card-supplier">${c.fornitore || 'Fornitore'}</div>
+        <div class="campaign-card-supplier">${c.fornitore || 'Fornitore'}
+          ${rating.totale > 0
+            ? ` <span class="card-rating"> · ${starsMedia(rating.media, 'var(--text-xs)')} <span>(${rating.totale})</span></span>`
+            : ` <span class="text-xs text-secondary">· Nessuna recensione</span>`}
+        </div>
         <div class="campaign-card-progress">
+          ${confermata ? `
+          <div style="margin-bottom: var(--space-1);">
+            <span class="text-xs font-medium">Campagna confermata dal gruppo &#10003; &middot; ${qty} pezzi prenotati</span>
+          </div>
+          ${Progress({ value: 1, max: 1 })}` : `
           <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-1);">
-            <span class="text-xs text-secondary">Obiettivo (${qty}/${min})</span>
+            <span class="text-xs text-secondary">${qty} di ${minimo} pezzi prenotati dal gruppo</span>
             <span class="text-xs font-medium">${percentage}%</span>
           </div>
-          ${Progress({ value: qty, max: min })}
+          ${Progress({ value: qty, max: minimo })}`}
         </div>
         <div class="countdown countdown-row" style="margin-bottom: var(--space-3);">
-          ${pubblicataTxt ? `<span class="text-sm pub-date">Pubblicata ${pubblicataTxt}</span>` : ''}
-          <span class="countdown-right">
+          <span class="countdown-right" style="margin-left:0;">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             ${conclusa
-              ? '<span>Terminata</span>'
+              ? '<span>Scaduta</span>'
               : `<span class="text-sm">Scade tra&nbsp;</span><span class="countdown-live" data-scadenza="${c.data_limite || ''}">${formatCountdown(c.data_limite) || '—'}</span>`}
           </span>
         </div>
@@ -96,7 +115,7 @@ window.homeFiltraCampagne = function() {
     ((c.prodotto || '').toLowerCase().includes(q) || (c.fornitore || '').toLowerCase().includes(q)) &&
     (homeFiltroCategoria === '' || (homeFiltroCategoria === '__senza__' ? !(c.categoria) : (c.categoria || '') === homeFiltroCategoria)) &&
     (homeFiltroFornitore === '' || (c.fornitore || '') === homeFiltroFornitore) &&
-    (homeFiltroStato === 'in_corso' ? isInCorso(c) : isConclusa(c)));
+    (homeFiltroStato === 'in_corso' ? displayCampagna(c) === 'in_corso' : displayCampagna(c) !== 'in_corso'));
   const filtriAttivi = q.trim() !== '' || homeFiltroCategoria !== '' || homeFiltroFornitore !== '' || homeFiltroStato !== 'in_corso';
   grid.innerHTML = filtrate.map(campaignCardHtml).join('')
     || (filtriAttivi
@@ -148,11 +167,11 @@ window.cardCarousel = function(cid, dir, event) {
 
 function howItWorksHtml() {
   const steps = [
-    { label: 'Partecipa', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
-    { label: 'Obiettivo raggiunto', icon: '<circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>' },
-    { label: 'Paghi', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>' },
-    { label: 'Ordine inviato', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="17.5" r="1.8" stroke-width="2"/><circle cx="17" cy="17.5" r="1.8" stroke-width="2"/>' },
-    { label: 'Ritira il pacco', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>' }
+    { label: 'Prenoti', sub: `con un acconto del ${ACCONTO_PERCENT}%`, icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
+    { label: 'Il gruppo raggiunge il minimo', sub: 'la campagna resta aperta fino alla scadenza', icon: '<circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>' },
+    { label: 'Paghi il saldo', sub: 'al prezzo finale, alla scadenza', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>' },
+    { label: 'Ordine inviato', sub: 'al fornitore', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="17.5" r="1.8" stroke-width="2"/><circle cx="17" cy="17.5" r="1.8" stroke-width="2"/>' },
+    { label: 'Ricevi il tuo ordine', sub: 'a casa o al punto di ritiro', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>' }
   ];
   return `
     <section class="how-section" aria-label="Come funziona">
@@ -162,7 +181,8 @@ function howItWorksHtml() {
         ${steps.map(s => `
         <li class="how-step">
           <span class="how-circle"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">${s.icon}</svg></span>
-          <span class="how-label">${s.label}</span>
+          <span class="how-step-title">${s.label}</span>
+          <span class="how-step-sub">${s.sub}</span>
         </li>`).join('')}
       </ol>
       <hr class="how-divider" />
@@ -225,7 +245,7 @@ export async function HomePage() {
     homeFiltraCampagne();
     let homeExpireHandled = false;
     startCountdowns(() => {
-      if (!homeExpireHandled && [...document.querySelectorAll('.countdown-live')].some(el => el.textContent === 'Terminata')) {
+      if (!homeExpireHandled && [...document.querySelectorAll('.countdown-live')].some(el => el.textContent === 'Scaduta')) {
         homeExpireHandled = true;
         homeFiltraCampagne();
       }

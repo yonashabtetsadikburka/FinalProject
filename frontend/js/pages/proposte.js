@@ -1,56 +1,96 @@
 import { getState } from '../state.js';
 import { apiGet, apiPost, apiDelete } from '../api.js';
 import { Badge } from '../components/badge.js';
+import { Progress } from '../components/progress.js';
+import { Avatar } from '../components/dropdown.js';
+import { SOGLIA_VOTI_PROPOSTA } from '../constants.js';
 
-const STATI_PROPOSTA_LABELS = {
-  in_attesa: 'In Attesa', approvata_admin: 'Approvata', rifiutata: 'Rifiutata',
-  in_votazione: 'In Votazione', pubblicata: 'Pubblicata', respinta_votazione: 'Respinta'
+const STATI_MIE_LABELS = {
+  in_votazione: 'In votazione', in_attesa: 'In attesa',
+  approvata_admin: 'Approvata', pubblicata: 'Approvata',
+  rifiutata: 'Rifiutata', respinta_votazione: 'Rifiutata'
 };
+
+const STATI_MIE_BADGES = {
+  in_votazione: 'warning', in_attesa: 'warning',
+  approvata_admin: 'success', pubblicata: 'success',
+  rifiutata: 'secondary', respinta_votazione: 'secondary'
+};
+
+function inizialiProponente(p) {
+  const nome = (p.proponente_nome || 'U').trim();
+  const cog = (p.proponente_cognome || '').trim();
+  return (nome[0] || 'U') + (cog ? cog[0] : '');
+}
+
+function nomeProponente(p) {
+  const nome = (p.proponente_nome || 'Utente').trim();
+  const cog = (p.proponente_cognome || '').trim();
+  return cog ? `${nome} ${cog[0]}.` : nome;
+}
 
 function renderPropostaCard(p) {
   const { user } = getState();
-  const badgeVariant = p.stato === 'in_votazione' ? 'default' : p.stato === 'in_attesa' ? 'warning' : 'secondary';
+  const voti = parseInt(p.tot_voti) || 0;
+  const pct = Math.min(100, Math.round((voti / SOGLIA_VOTI_PROPOSTA) * 100));
+  const votato = p.mio_voto === 'favore';
+  const mia = user && p.proponente_id === user.id;
+  const votabile = p.stato === 'in_votazione' && user && !mia;
   return `
     <div class="card" style="margin-bottom:var(--space-3);">
       <div class="card-content">
-        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--space-2);">
-          <h3 style="font-size:var(--text-base);font-weight:var(--font-semibold);">${p.nome_prodotto}</h3>
-          ${Badge({ variant: badgeVariant, children: STATI_PROPOSTA_LABELS[p.stato] || p.stato })}
-        </div>
-        <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">${p.descrizione || ''}</p>
-        ${p.motivo ? `<div class="text-xs" style="margin-bottom:var(--space-2);padding:var(--space-2);background:var(--color-bg);border-radius:var(--radius-sm);">Motivo: ${p.motivo}</div>` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span class="text-xs text-secondary">Proposto da: ${p.proponente_nome || ''} ${p.proponente_cognome || ''}</span>
-          <div style="display:flex;align-items:center;gap:var(--space-2);">
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
-            <span class="text-sm font-medium">${p.tot_voti || 0} voti</span>
+        <div style="display:flex;gap:var(--space-3);">
+          <div class="order-thumb order-thumb-empty" style="flex-shrink:0;">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:var(--space-2);margin-bottom:var(--space-1);">
+              <h3 style="font-size:var(--text-base);font-weight:var(--font-semibold);">${p.nome_prodotto}</h3>
+              <span style="flex-shrink:0;">${Badge({ variant: STATI_MIE_BADGES[p.stato] || 'secondary', children: STATI_MIE_LABELS[p.stato] || p.stato })}</span>
+            </div>
+            ${p.descrizione ? `<p class="text-sm text-secondary" style="margin-bottom:var(--space-2);">${p.descrizione}</p>` : ''}
+            ${p.link_riferimento ? `<a href="${p.link_riferimento}" target="_blank" rel="noopener" class="text-xs" style="display:inline-block;margin-bottom:var(--space-2);">Link di riferimento &nearr;</a>` : ''}
+            ${p.motivo ? `<div class="text-xs" style="margin-bottom:var(--space-2);padding:var(--space-2);background:var(--color-bg);border-radius:var(--radius-sm);">Motivo: ${p.motivo}</div>` : ''}
+            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);">
+              ${Avatar({ fallback: inizialiProponente(p), size: 'sm' })}
+              <span class="text-xs text-secondary">Proposto da ${nomeProponente(p)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:var(--space-3);">
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-1);">
+                  <span class="text-xs text-secondary">${voti} di ${SOGLIA_VOTI_PROPOSTA} voti per essere considerata</span>
+                  <span class="text-xs font-medium">${pct}%</span>
+                </div>
+                ${Progress({ value: voti, max: SOGLIA_VOTI_PROPOSTA })}
+              </div>
+              ${votabile ? (votato ? `
+                <button class="btn btn-default btn-sm" style="flex-shrink:0;" onclick="handleNonVotare(${p.id_proposta})">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  Votato
+                </button>` : `
+                <button class="btn btn-outline btn-sm" style="flex-shrink:0;" onclick="handleVota(${p.id_proposta})">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
+                  Vota
+                </button>`) : ''}
+            </div>
           </div>
         </div>
-        ${(p.stato === 'in_votazione') && user ? `
-          <div style="margin-top:var(--space-3);display:flex;gap:var(--space-2);">
-            ${p.mio_voto === 'favore' ? `
-            <button class="btn btn-secondary btn-sm" onclick="handleNonVotare(${p.id_proposta})">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-              Non votare
-            </button>` : `
-            <button class="btn btn-outline btn-sm" onclick="handleVota(${p.id_proposta})">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
-              Vota
-            </button>`}
-          </div>` : ''}
       </div>
     </div>`;
+}
+
+function aggiornaLocale(idProposta, mioVoto, delta) {
+  const p = allProposte.find(x => x.id_proposta === idProposta);
+  if (!p) return;
+  p.mio_voto = mioVoto;
+  p.tot_voti = Math.max(0, (parseInt(p.tot_voti) || 0) + delta);
+  disegnaTab();
 }
 
 window.handleVota = async function(idProposta) {
   try {
     await apiPost(`/proposte/${idProposta}/vota`, { valore_voto: 'favore' });
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-success';
-    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Voto registrato!</div></div>';
-    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
-    renderTabContent();
+    aggiornaLocale(idProposta, 'favore', 1);
   } catch (err) {
     alert(err.message);
   }
@@ -59,12 +99,7 @@ window.handleVota = async function(idProposta) {
 window.handleNonVotare = async function(idProposta) {
   try {
     await apiDelete(`/proposte/${idProposta}/vota`);
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-success';
-    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Voto ritirato</div></div>';
-    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
-    renderTabContent();
+    aggiornaLocale(idProposta, null, -1);
   } catch (err) {
     alert(err.message);
   }
@@ -73,6 +108,27 @@ window.handleNonVotare = async function(idProposta) {
 let currentTab = 'votazione';
 let allProposte = [];
 
+const EMPTY_TITLES = {
+  votazione: 'Nessuna proposta in votazione',
+  mie: 'Non hai ancora proposto nulla'
+};
+
+function proposteFiltrate() {
+  const { user: me } = getState();
+  if (currentTab === 'mie') {
+    return allProposte.filter(p => me && p.proponente_id === me.id);
+  }
+  return allProposte.filter(p => p.stato === 'in_votazione');
+}
+
+function disegnaTab() {
+  const content = document.getElementById('proposte-tab-content');
+  if (!content) return;
+  const proposte = proposteFiltrate();
+  content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('')
+    : `<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">${EMPTY_TITLES[currentTab]}</h2></div>`;
+}
+
 async function renderTabContent() {
   const content = document.getElementById('proposte-tab-content');
   if (!content) return;
@@ -80,60 +136,69 @@ async function renderTabContent() {
     const res = await apiGet('/proposte');
     allProposte = res.dati || [];
   } catch (e) { allProposte = []; }
-
-  if (currentTab === 'votazione') {
-    const proposte = allProposte.filter(p => p.stato === 'in_votazione');
-    content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('') : '<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">Nessuna proposta in votazione</h2></div>';
-  } else if (currentTab === 'approvate') {
-    const proposte = allProposte.filter(p => ['approvata_admin', 'pubblicata'].includes(p.stato));
-    content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('') : '<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">Nessuna proposta approvata</h2></div>';
-  } else if (currentTab === 'mie') {
-    const { user: me } = getState();
-    const proposte = allProposte.filter(p => me && p.proponente_id === me.id);
-    content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('') : '<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">Non hai ancora proposto nulla</h2></div>';
-  } else if (currentTab === 'rifiutate') {
-    const { user: me } = getState();
-    const proposte = allProposte.filter(p => ['rifiutata', 'respinta_votazione'].includes(p.stato) && me && p.proponente_id === me.id);
-    content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('') : '<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">Nessuna proposta rifiutata</h2></div>';
-  } else if (currentTab === 'nuova') {
-    content.innerHTML = `
-      <div class="card"><div class="card-content">
-        <h3 style="font-size:var(--text-lg);font-weight:var(--font-semibold);margin-bottom:var(--space-4);">Nuova Proposta</h3>
-        <form id="proposta-form" style="display:flex;flex-direction:column;gap:var(--space-4);">
-          <div class="input-group"><label class="input-label">Nome Prodotto *</label><input type="text" name="nome_prodotto" class="input" placeholder="Es: Smartwatch XYZ" required></div>
-          <div class="input-group"><label class="input-label">Descrizione</label><textarea name="descrizione" class="input" placeholder="Descrivi il prodotto..."></textarea></div>
-          <div id="proposta-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;"></div>
-          <div id="proposta-success" style="color:var(--color-success);font-size:var(--text-sm);display:none;"></div>
-          <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;">
-            <button type="submit" class="btn btn-default">Invia Proposta</button>
-            <button type="button" class="btn btn-outline" onclick="switchProposteTab('votazione')">Torna alle proposte</button>
-          </div>
-        </form>
-      </div></div>`;
-    document.getElementById('proposta-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const errorEl = document.getElementById('proposta-error');
-      const successEl = document.getElementById('proposta-success');
-      errorEl.style.display = 'none'; successEl.style.display = 'none';
-      const nome = form.nome_prodotto.value.trim();
-      if (!nome) { errorEl.textContent = 'Il nome e obbligatorio.'; errorEl.style.display = 'block'; return; }
-      try {
-        await apiPost('/proposte', { nome_prodotto: nome, descrizione: form.descrizione.value.trim() });
-        successEl.textContent = 'Proposta inviata con successo!'; successEl.style.display = 'block';
-        form.reset();
-        setTimeout(() => switchProposteTab('votazione'), 1500);
-      } catch (err) { errorEl.textContent = err.message; errorEl.style.display = 'block'; }
-    });
-  }
+  disegnaTab();
 }
 
 window.switchProposteTab = function(tab) {
   currentTab = tab;
   document.querySelectorAll('.wishlist-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   renderTabContent();
-  const btn = document.getElementById('proposte-add-btn');
-  if (btn) btn.style.display = currentTab === 'nuova' ? 'none' : 'inline-flex';
+};
+
+window.apriPropostaModal = function() {
+  document.getElementById('proposta-modal')?.remove();
+  const modalHtml = `
+    <div id="proposta-modal" class="modal-overlay" onclick="if(event.target===this)document.getElementById('proposta-modal').remove()">
+      <div class="modal-content card" style="max-width:520px;width:92%;max-height:90vh;overflow-y:auto;">
+        <div class="card-content">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--space-1);">
+            <h3 style="font-size:var(--text-lg);font-weight:var(--font-semibold);">Nuova Proposta</h3>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('proposta-modal').remove()" aria-label="Chiudi">&#10005;</button>
+          </div>
+          <p class="text-sm text-secondary" style="margin-bottom:var(--space-4);">Servono almeno ${SOGLIA_VOTI_PROPOSTA} voti dalla community perché venga considerata.</p>
+          <div id="proposta-modal-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
+          <form id="proposta-modal-form" style="display:flex;flex-direction:column;gap:var(--space-3);">
+            <div class="input-group">
+              <label class="input-label">Nome prodotto</label>
+              <input type="text" name="nome_prodotto" class="input" placeholder="Es: Smartwatch XYZ" maxlength="80" required>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Descrizione</label>
+              <textarea name="descrizione" class="input" rows="3" placeholder="Descrivi il prodotto..." style="height:auto;"></textarea>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Link di riferimento (opzionale)</label>
+              <input type="url" name="link_riferimento" class="input" placeholder="https://...">
+            </div>
+            <div style="display:flex;gap:var(--space-2);">
+              <button type="submit" class="btn btn-default" style="flex:1;">Invia Proposta</button>
+              <button type="button" class="btn btn-outline" style="flex:1;" onclick="document.getElementById('proposta-modal').remove()">Annulla</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  document.getElementById('proposta-modal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const errorEl = document.getElementById('proposta-modal-error');
+    errorEl.style.display = 'none';
+    const nome = form.nome_prodotto.value.trim();
+    if (!nome) { errorEl.textContent = 'Il nome è obbligatorio.'; errorEl.style.display = 'block'; return; }
+    try {
+      await apiPost('/proposte', {
+        nome_prodotto: nome,
+        descrizione: form.descrizione.value.trim(),
+        link_riferimento: form.link_riferimento.value.trim()
+      });
+      document.getElementById('proposta-modal')?.remove();
+      switchProposteTab('mie');
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+    }
+  });
 };
 
 export async function PropostePage() {
@@ -142,17 +207,18 @@ export async function PropostePage() {
   content.innerHTML = `
     <div class="content-area">
       <div class="page-header">
-        <h1>Proposte</h1>
-        <button class="btn btn-default" id="proposte-add-btn" onclick="switchProposteTab('nuova')">
+        <div>
+          
+          <p class="text-sm text-secondary" style="margin-top:var(--space-1);">Proponi un prodotto che vorresti in una campagna, o vota le proposte di altri utenti per farle partire prima.</p>
+        </div>
+        <button class="btn btn-default" id="proposte-add-btn" onclick="apriPropostaModal()">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           Nuova Proposta
         </button>
       </div>
       <div class="wishlist-tabs">
-        <button class="wishlist-tab active" data-tab="votazione" onclick="switchProposteTab('votazione')">In Votazione</button>
-        <button class="wishlist-tab" data-tab="approvate" onclick="switchProposteTab('approvate')">Approvate</button>
+        <button class="wishlist-tab active" data-tab="votazione" onclick="switchProposteTab('votazione')">In votazione</button>
         <button class="wishlist-tab" data-tab="mie" onclick="switchProposteTab('mie')">Le mie proposte</button>
-        <button class="wishlist-tab" data-tab="rifiutate" onclick="switchProposteTab('rifiutate')">Rifiutate</button>
       </div>
       <div id="proposte-tab-content"><div class="loading-spinner">Caricamento...</div></div>
     </div>`;

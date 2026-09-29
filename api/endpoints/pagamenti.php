@@ -158,25 +158,25 @@ function mie_statistiche(): void
            FROM prenotazioni p
            JOIN collette c ON c.id = p.id_colletta
           WHERE p.id_utente = ?
-            AND p.stato IN ('prenotata','confermata','pagata')
+            AND p.stato IN ('prenotata','confermata','pagata','azione_richiesta')
             AND c.stato NOT IN ('annullata','fallita')"
     );
     $st->execute([$io]);
     $risparmio = round((float)$st->fetchColumn(), 2);
 
-    // Da pagare (confermate, con commissione)
+    // Da pagare (confermate/azione_richiesta: totale meno acconto già versato)
     $st = db()->prepare(
-        "SELECT COALESCE(SUM(p.quantita * c.prezzo_corrente * (1 + c.percentuale_commissione / 100)), 0)
+        "SELECT COALESCE(SUM(p.quantita * c.prezzo_corrente * (1 + c.percentuale_commissione / 100) - COALESCE(p.importo_acconto, 0)), 0)
            FROM prenotazioni p
            JOIN collette c ON c.id = p.id_colletta
-          WHERE p.id_utente = ? AND p.stato = 'confermata'"
+          WHERE p.id_utente = ? AND p.stato IN ('confermata','azione_richiesta')"
     );
     $st->execute([$io]);
-    $da_pagare = round((float)$st->fetchColumn(), 2);
+    $da_pagare = round(max(0, (float)$st->fetchColumn()), 2);
 
     // Conteggi
     $st = db()->prepare(
-        "SELECT COUNT(*) FROM prenotazioni WHERE id_utente = ? AND stato IN ('prenotata','confermata','pagata')"
+        "SELECT COUNT(*) FROM prenotazioni WHERE id_utente = ? AND stato IN ('prenotata','confermata','pagata','azione_richiesta')"
     );
     $st->execute([$io]);
     $n_attive = (int)$st->fetchColumn();

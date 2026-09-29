@@ -1,8 +1,14 @@
 export const API_URL = 'http://localhost:8888/buypool/api';
 
+/** Percentuale di acconto sul prezzo primo scaglione (solo presentazione: la logica di pagamento non la usa). */
+export const ACCONTO_PERCENT = 20;
+
+/** Voti minimi perché una proposta venga considerata dall'admin (solo presentazione). */
+export const SOGLIA_VOTI_PROPOSTA = 5;
+
 export const STATI_CAMPAGNA_LABELS = {
   in_corso: 'In Corso',
-  riuscita: 'Obiettivo Raggiunto',
+  riuscita: 'Il gruppo raggiunge il minimo',
   fallita: 'Fallita',
   ordine_pronto: 'Ordine Confermato',
   ordine_fornitore: 'Ordine al Fornitore',
@@ -25,7 +31,8 @@ export const STATI_PRENOTAZIONE_LABELS = {
   confermata: 'Da Pagare',
   pagata: 'Pagata',
   annullata: 'Annullata',
-  rimborsata: 'Rimborsata'
+  rimborsata: 'Rimborsata',
+  azione_richiesta: 'Azione richiesta'
 };
 
 export const STATI_PRENOTAZIONE_BADGES = {
@@ -33,7 +40,8 @@ export const STATI_PRENOTAZIONE_BADGES = {
   confermata: 'badge-info',
   pagata: 'badge-success',
   annullata: 'badge-destructive',
-  rimborsata: 'badge-secondary'
+  rimborsata: 'badge-secondary',
+  azione_richiesta: 'badge-destructive'
 };
 
 export const RUOLI_LABELS = {

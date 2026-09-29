@@ -35,13 +35,17 @@ function proposte_crea(): void
     $nome = campo($d, 'nome_prodotto');
     $descrizione = trim((string)($d['descrizione'] ?? ''));
     $fornitore_id = isset($d['id_fornitore_suggerito']) ? campo_int($d, 'id_fornitore_suggerito') : null;
+    $link = trim((string)($d['link_riferimento'] ?? ''));
+    if ($link !== '' && !preg_match('#^https?://#i', $link)) {
+        throw new AppError('LINK_NON_VALIDO', 'Il link di riferimento deve iniziare con http:// o https://');
+    }
 
     $st = db()->prepare(
-        'INSERT INTO proposte_prodotti (proponente_tipo, proponente_id, nome_prodotto, descrizione, id_fornitore_suggerito, stato)
-         VALUES (?, ?, ?, ?, ?, \'in_attesa\')'
+        'INSERT INTO proposte_prodotti (proponente_tipo, proponente_id, nome_prodotto, descrizione, id_fornitore_suggerito, link_riferimento, stato)
+         VALUES (?, ?, ?, ?, ?, ?, \'in_attesa\')'
     );
     $ruolo = $_SESSION['ruolo'] ?? 'cliente';
-    $st->execute([$ruolo, $io, $nome, $descrizione, $fornitore_id]);
+    $st->execute([$ruolo, $io, $nome, $descrizione, $fornitore_id, ($link !== '' ? mb_substr($link, 0, 500) : null)]);
     json_ok(['id_proposta' => (int)db()->lastInsertId()], 201);
 }
 
@@ -55,10 +59,13 @@ function proposte_vota(int $id): void
     }
 
     // Verifica che la proposta esista e sia in votazione
-    $st = db()->prepare('SELECT stato FROM proposte_prodotti WHERE id_proposta = ?');
+    $st = db()->prepare('SELECT stato, proponente_id FROM proposte_prodotti WHERE id_proposta = ?');
     $st->execute([$id]);
     $p = $st->fetch();
     if (!$p) throw new AppError('PROPOSTA_INESISTENTE', 'Proposta non trovata', 404);
+    if ((int)$p['proponente_id'] === $io) {
+        throw new AppError('VOTO_PROPRIO', 'Non puoi votare la tua proposta', 403);
+    }
     if ($p['stato'] !== 'in_votazione') {
         throw new AppError('PROPOSTA_NON_VOTABILE', 'La proposta non e\' in fase di votazione');
     }

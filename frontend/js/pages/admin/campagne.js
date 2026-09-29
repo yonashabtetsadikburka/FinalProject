@@ -1,4 +1,4 @@
-import { apiGet, apiPostForm, apiDelete } from '../../api.js';
+import { apiGet, apiPost, apiPostForm, apiDelete } from '../../api.js';
 import { API_URL } from '../../constants.js';
 
 function campImgUrl(path) {
@@ -88,6 +88,22 @@ window.showCampagnaDettaglio = async function(campagnaId) {
         </div>
       </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.chiudiCampagna = async function(campagnaId) {
+  if (!confirm(`Chiudere la campagna #${campagnaId} e addebitare i saldi alle prenotazioni confermate?`)) return;
+  try {
+    const res = await apiPost(`/campagne/${campagnaId}/chiusura`, {});
+    const d = res.dati || {};
+    if (d.gia_chiusa) {
+      alert('Campagna già chiusa, niente da elaborare.');
+    } else {
+      alert(`Chiusura completata. Pagate: ${d.pagate ?? 0}, azione richiesta: ${d.azione_richiesta ?? 0}, rimborsate: ${d.rimborsate ?? 0}, saltate: ${d.saltate ?? 0}.`);
+    }
+    AdminCampagnePage();
   } catch (err) {
     alert(err.message);
   }
@@ -353,13 +369,15 @@ export async function AdminCampagnePage() {
       const dl = new Date(c.data_limite);
       return {
         nome: `<a href="javascript:void(0)" onclick="showCampagnaDettaglio(${c.id})" title="${(c.prodotto || 'N/A').replace(/"/g, '&quot;')}" style="color:var(--color-primary);font-weight:var(--font-medium);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;">${c.prodotto || 'N/A'}</a>`,
-        stato: `<span class="badge ${STATI_CAMPAGNA_BADGES[c.stato] || 'badge-secondary'}">${STATI_CAMPAGNA_LABELS[c.stato] || c.stato}</span>`,
+        stato: `<span class="badge ${STATI_CAMPAGNA_BADGES[c.stato] || 'badge-secondary'}">${STATI_CAMPAGNA_LABELS[c.stato] || c.stato}</span>${c.chiusura_data ? ' <span class="badge badge-secondary">Chiusa</span>' : ''}`,
         partecipanti: `${qty} / ${min}`,
         avanzamento: `<div style="display:flex;align-items:center;gap:8px;"><div class="progress-container" style="width:80px;"><div class="progress-bar" style="width:${percentage}%"></div></div><span class="text-xs">${percentage}%</span></div>`,
         scadenza: dl.toLocaleDateString('it-IT') + ' ore ' + dl.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
         pubblicata: c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : '-',
         azioni: `<div class="azioni-campagne">
           <button class="btn btn-outline btn-sm" onclick="modificaCampagna(${c.id})">Modifica</button>
+          ${c.stato === 'riuscita' && !c.chiusura_data ? `<button class="btn btn-default btn-sm" onclick="chiudiCampagna(${c.id})">Chiudi e addebita</button>` : ''}
+          ${c.stato === 'fallita' && !c.chiusura_data ? `<button class="btn btn-outline btn-sm" onclick="chiudiCampagna(${c.id})">Rimborsa e chiudi</button>` : ''}
           <button class="btn btn-destructive btn-sm" onclick="eliminaCampagna(${c.id}, '${(c.prodotto || '').replace(/'/g, "\\'")}')">Elimina</button>
         </div>`
       };

@@ -29,23 +29,30 @@ function recensioni_ha_acquistato(int $idFornitore, int $idUtente): bool
     return (bool)$st->fetch();
 }
 
-/** GET /fornitori/{id}/recensioni — lista + media + flag puo_recensire. */
+/** GET /fornitori/{id}/recensioni — lista + media + flag puo_recensire (pubblico; ospite: mia=null). */
 function recensioni_elenco(int $idFornitore): void
 {
-    $io = richiedi_login();
+    $io = utente_corrente_id();
     recensioni_fornitore_ok($idFornitore);
 
     $st = db()->prepare(
-        'SELECT r.id, r.voto, r.testo, r.data_creazione, u.nome AS autore
+        'SELECT r.id, r.voto, r.testo, r.data_creazione, u.nome AS autore,
+                LEFT(u.cognome, 1) AS cognome_iniziale,
+                EXISTS(SELECT 1 FROM prenotazioni p
+                         JOIN collette c ON c.id = p.id_colletta
+                         JOIN prodotti pr ON pr.id = c.id_prodotto
+                        WHERE pr.id_fornitore = ? AND p.id_utente = r.id_utente
+                          AND p.stato = \'pagata\') AS verificata
            FROM recensioni_fornitore r
            JOIN utenti u ON u.id = r.id_utente
           WHERE r.id_fornitore = ?
           ORDER BY r.data_creazione DESC'
     );
-    $st->execute([$idFornitore]);
+    $st->execute([$idFornitore, $idFornitore]);
     $rows = array_map(function ($r) {
         $r['id'] = (int)$r['id'];
         $r['voto'] = (int)$r['voto'];
+        $r['verificata'] = (bool)$r['verificata'];
         return $r;
     }, $st->fetchAll());
 
@@ -53,19 +60,21 @@ function recensioni_elenco(int $idFornitore): void
     $media = $tot > 0 ? round(array_sum(array_column($rows, 'voto')) / $tot, 1) : null;
 
     $mia = null;
-    $st = db()->prepare(
-        'SELECT id, voto, testo FROM recensioni_fornitore WHERE id_fornitore = ? AND id_utente = ?'
-    );
-    $st->execute([$idFornitore, $io]);
-    if ($m = $st->fetch()) {
-        $mia = ['id' => (int)$m['id'], 'voto' => (int)$m['voto'], 'testo' => $m['testo']];
+    if ($io !== null) {
+        $st = db()->prepare(
+            'SELECT id, voto, testo FROM recensioni_fornitore WHERE id_fornitore = ? AND id_utente = ?'
+        );
+        $st->execute([$idFornitore, $io]);
+        if ($m = $st->fetch()) {
+            $mia = ['id' => (int)$m['id'], 'voto' => (int)$m['voto'], 'testo' => $m['testo']];
+        }
     }
 
     json_ok([
         'media' => $media,
         'totale' => $tot,
         'mia' => $mia,
-        'puo_recensire' => recensioni_ha_acquistato($idFornitore, $io),
+        'puo_recensire' => $io !== null && recensioni_ha_acquistato($idFornitore, $io),
         'recensioni' => $rows,
     ]);
 }
@@ -136,23 +145,30 @@ function recensioni_campagna_consegnata(int $idColletta, int $idUtente): bool
     return (bool)$st->fetch();
 }
 
-/** GET /campagne/{id}/recensioni — lista + media + flag puo_recensire. */
+/** GET /campagne/{id}/recensioni — lista + media + flag puo_recensire (pubblico; ospite: mia=null). */
 function recensioni_campagna_elenco(int $idColletta): void
 {
-    $io = richiedi_login();
+    $io = utente_corrente_id();
     recensioni_campagna_ok($idColletta);
 
     $st = db()->prepare(
-        'SELECT r.id, r.voto, r.testo, r.data_creazione, u.nome AS autore
+        'SELECT r.id, r.voto, r.testo, r.data_creazione, u.nome AS autore,
+                LEFT(u.cognome, 1) AS cognome_iniziale,
+                EXISTS(SELECT 1 FROM prenotazioni p
+                         LEFT JOIN consegne co ON co.id_prenotazione = p.id
+                         LEFT JOIN qr_codes qr ON qr.id_prenotazione = p.id
+                        WHERE p.id_colletta = ? AND p.id_utente = r.id_utente AND p.stato = \'pagata\'
+                          AND (co.stato IN (\'consegnata\',\'ritirata\') OR qr.stato = \'scansionato\')) AS verificata
            FROM recensioni_campagna r
            JOIN utenti u ON u.id = r.id_utente
           WHERE r.id_colletta = ?
           ORDER BY r.data_creazione DESC'
     );
-    $st->execute([$idColletta]);
+    $st->execute([$idColletta, $idColletta]);
     $rows = array_map(function ($r) {
         $r['id'] = (int)$r['id'];
         $r['voto'] = (int)$r['voto'];
+        $r['verificata'] = (bool)$r['verificata'];
         return $r;
     }, $st->fetchAll());
 
@@ -160,19 +176,21 @@ function recensioni_campagna_elenco(int $idColletta): void
     $media = $tot > 0 ? round(array_sum(array_column($rows, 'voto')) / $tot, 1) : null;
 
     $mia = null;
-    $st = db()->prepare(
-        'SELECT id, voto, testo FROM recensioni_campagna WHERE id_colletta = ? AND id_utente = ?'
-    );
-    $st->execute([$idColletta, $io]);
-    if ($m = $st->fetch()) {
-        $mia = ['id' => (int)$m['id'], 'voto' => (int)$m['voto'], 'testo' => $m['testo']];
+    if ($io !== null) {
+        $st = db()->prepare(
+            'SELECT id, voto, testo FROM recensioni_campagna WHERE id_colletta = ? AND id_utente = ?'
+        );
+        $st->execute([$idColletta, $io]);
+        if ($m = $st->fetch()) {
+            $mia = ['id' => (int)$m['id'], 'voto' => (int)$m['voto'], 'testo' => $m['testo']];
+        }
     }
 
     json_ok([
         'media' => $media,
         'totale' => $tot,
         'mia' => $mia,
-        'puo_recensire' => recensioni_campagna_consegnata($idColletta, $io),
+        'puo_recensire' => $io !== null && recensioni_campagna_consegnata($idColletta, $io),
         'recensioni' => $rows,
     ]);
 }

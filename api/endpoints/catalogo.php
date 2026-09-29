@@ -6,7 +6,7 @@ function catalogo_fornitori(): void
     richiedi_login();
     $st = db()->query(
         'SELECT f.id, f.nome_azienda AS nome, f.indirizzo, f.descrizione, f.logo_url, f.sito_web,
-                f.categoria, f.email_contatto, f.telefono,
+                f.categoria, f.email_contatto, f.telefono, f.data_partnership,
                 COUNT(DISTINCT c.id) AS num_campagne
            FROM fornitori f
       LEFT JOIN prodotti p ON p.id_fornitore = f.id

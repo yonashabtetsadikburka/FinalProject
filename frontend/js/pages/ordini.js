@@ -18,17 +18,34 @@ let ordiniFiltroQ = '';
 let ordiniFiltroStato = '';
 let costoSpedizione = 0;
 let recensioniMie = {};
+let recensioniMieProd = {};
 
 async function caricaStatoRecensioni(ordini) {
-  const fids = [...new Set(ordini
-    .filter(p => statoOrdine(p) === 'finale' && p.fornitore_id)
-    .map(p => p.fornitore_id))].filter(fid => !(fid in recensioniMie));
-  await Promise.all(fids.map(async fid => {
-    try {
-      const rec = await apiGet(`/fornitori/${fid}/recensioni`);
-      recensioniMie[fid] = !!rec.dati?.mia;
-    } catch (_) {}
-  }));
+  const finals = ordini.filter(p => statoOrdine(p) === 'finale');
+  const fids = [...new Set(finals.map(p => p.fornitore_id).filter(fid => fid && !(fid in recensioniMie)))];
+  const cids = [...new Set(finals.map(p => p.id_colletta).filter(cid => cid && !(cid in recensioniMieProd)))];
+  await Promise.all([
+    ...fids.map(async fid => {
+      try {
+        const rec = await apiGet(`/fornitori/${fid}/recensioni`);
+        recensioniMie[fid] = !!rec.dati?.mia;
+      } catch (_) {}
+    }),
+    ...cids.map(async cid => {
+      try {
+        const rec = await apiGet(`/campagne/${cid}/recensioni`);
+        recensioniMieProd[cid] = !!rec.dati?.mia;
+      } catch (_) {}
+    })
+  ]);
+}
+
+/** True se manca almeno una delle due recensioni (prodotto e/o fornitore). */
+function mancaRecensione(p) {
+  if (statoOrdine(p) !== 'finale') return false;
+  const mancaF = p.fornitore_id && recensioniMie[p.fornitore_id] !== true;
+  const mancaP = recensioniMieProd[p.id_colletta] !== true;
+  return !!(mancaF || mancaP);
 }
 
 window.ordiniFiltra = function() {
@@ -79,46 +96,76 @@ window.handlePagaOrdine = async function(prenotazioneId) {
   }
 };
 
-let recPopupVoto = 0;
+window.handleRiprovaOrdine = async function(prenotazioneId) {
+  try {
+    const res = await apiPost('/pagamento/riprova', { prenotazione_id: prenotazioneId });
+    if (res.dati?.checkout_url) window.location.href = res.dati.checkout_url;
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
-window.recPopupSetVoto = function(v) {
-  recPopupVoto = v;
-  document.querySelectorAll('#rec-popup-stars .rec-star').forEach((s, i) =>
+let recPopupVotoProd = 0;
+let recPopupVotoForn = 0;
+
+window.recPopupSetVoto = function(target, v) {
+  if (target === 'prod') recPopupVotoProd = v;
+  else recPopupVotoForn = v;
+  document.querySelectorAll(`#rec-popup-stars-${target} .rec-star`).forEach((s, i) =>
     s.classList.toggle('active', i < v));
 };
 
-window.apriRecensionePopup = async function(fornitoreId, nomeFornitore) {
+function recPopupBlocco(target, titolo, nome, placeholder) {
+  return `
+    <div style="margin-bottom:var(--space-4);">
+      <h4 style="font-size:var(--text-sm);font-weight:var(--font-semibold);margin-bottom:var(--space-1);">${titolo}</h4>
+      <p class="text-xs text-secondary" style="margin-bottom:var(--space-2);">${nome}</p>
+      <div id="rec-popup-stars-${target}" style="font-size:var(--text-2xl);cursor:pointer;margin-bottom:var(--space-2);">
+        ${[1, 2, 3, 4, 5].map(i => `<span class="rec-star" onclick="recPopupSetVoto('${target}', ${i})" style="color:var(--color-border);">&#9733;</span>`).join('')}
+      </div>
+      <textarea id="rec-popup-testo-${target}" class="input" rows="2" maxlength="1000" placeholder="${placeholder}" style="height:auto;"></textarea>
+      <div id="rec-popup-error-${target}" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-top:var(--space-1);"></div>
+    </div>`;
+}
+
+window.apriRecensionePopup = async function(fornitoreId, nomeFornitore, campagnaId, nomeProdotto) {
   document.getElementById('rec-popup-modal')?.remove();
-  let dati = { media: null, totale: 0, mia: null, recensioni: [] };
+  let haF = false;
+  let haP = false;
   try {
-    const res = await apiGet(`/fornitori/${fornitoreId}/recensioni`);
-    dati = res.dati || dati;
+    const [resF, resP] = await Promise.all([
+      fornitoreId ? apiGet(`/fornitori/${fornitoreId}/recensioni`).catch(() => null) : Promise.resolve(null),
+      campagnaId ? apiGet(`/campagne/${campagnaId}/recensioni`).catch(() => null) : Promise.resolve(null)
+    ]);
+    haF = !!resF?.dati?.mia;
+    haP = !!resP?.dati?.mia;
   } catch (err) {
     alert(err.message);
     return;
   }
-  if (dati.mia) {
+  if (haF && haP) {
     const toast = document.createElement('div');
     toast.className = 'toast toast-success';
-    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Hai già recensito questo fornitore</div></div>';
+    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Hai già lasciato entrambe le recensioni</div></div>';
     document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
     return;
   }
-  recPopupVoto = 0;
+  const faProd = !haP && !!campagnaId;
+  const faForn = !haF && !!fornitoreId;
+  if (!faProd && !faForn) return;
+  recPopupVotoProd = 0;
+  recPopupVotoForn = 0;
   const modalHtml = `
     <div id="rec-popup-modal" class="modal-overlay" onclick="if(event.target===this)document.getElementById('rec-popup-modal').remove()">
-      <div class="modal-content card" style="max-width:420px;width:92%;">
+      <div class="modal-content card" style="max-width:460px;width:92%;max-height:90vh;overflow-y:auto;">
         <div class="card-content">
           <h3 style="margin-bottom:var(--space-1);">Lascia una recensione...</h3>
-          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">...a ${nomeFornitore || 'questo fornitore'} per il tuo acquisto ritirato.</p>
-          <div id="rec-popup-stars" style="font-size:var(--text-2xl);cursor:pointer;margin-bottom:var(--space-2);">
-            ${[1, 2, 3, 4, 5].map(i => `<span class="rec-star" onclick="recPopupSetVoto(${i})" style="color:var(--color-border);">&#9733;</span>`).join('')}
-          </div>
-          <textarea id="rec-popup-testo" class="input" rows="3" maxlength="1000" placeholder="Com'è andato il tuo acquisto? (max 1000 caratteri)" style="height:auto;margin-bottom:var(--space-2);"></textarea>
-          <div id="rec-popup-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
+          <p class="text-sm text-secondary" style="margin-bottom:var(--space-3);">...per il tuo acquisto ritirato.</p>
+          ${faProd ? recPopupBlocco('prod', 'Il prodotto', nomeProdotto || 'questo prodotto', "Com'è il prodotto? (max 1000 caratteri)") : ''}
+          ${faForn ? recPopupBlocco('forn', 'Il fornitore', nomeFornitore || 'questo fornitore', "Com'è andato l'acquisto? (max 1000 caratteri)") : ''}
           <div style="display:flex;gap:var(--space-2);">
-            <button class="btn btn-default" style="flex:1;" onclick="inviaRecensioneFornitore(${fornitoreId})">Invia recensione</button>
+            <button class="btn btn-default" style="flex:1;" onclick="inviaRecensioniPopup(${fornitoreId || 0}, ${campagnaId || 0}, ${faProd ? 1 : 0}, ${faForn ? 1 : 0})">Invia ${faProd && faForn ? 'recensioni' : 'recensione'}</button>
             <button class="btn btn-ghost" onclick="document.getElementById('rec-popup-modal').remove()">Chiudi</button>
           </div>
         </div>
@@ -127,27 +174,50 @@ window.apriRecensionePopup = async function(fornitoreId, nomeFornitore) {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 };
 
-window.inviaRecensioneFornitore = async function(fornitoreId) {
-  const errorEl = document.getElementById('rec-popup-error');
-  errorEl.style.display = 'none';
-  if (!recPopupVoto || recPopupVoto < 1 || recPopupVoto > 5) {
-    errorEl.textContent = 'Seleziona un voto da 1 a 5 stelle.';
-    errorEl.style.display = 'block';
-    return;
+window.inviaRecensioniPopup = async function(fornitoreId, campagnaId, faProd, faForn) {
+  const errP = document.getElementById('rec-popup-error-prod');
+  const errF = document.getElementById('rec-popup-error-forn');
+  if (errP) errP.style.display = 'none';
+  if (errF) errF.style.display = 'none';
+  let valido = true;
+  if (faProd && (!recPopupVotoProd || recPopupVotoProd < 1 || recPopupVotoProd > 5)) {
+    if (errP) { errP.textContent = 'Seleziona un voto da 1 a 5 stelle per il prodotto.'; errP.style.display = 'block'; }
+    valido = false;
   }
-  try {
-    const testo = document.getElementById('rec-popup-testo')?.value.trim() || '';
-    await apiPost(`/fornitori/${fornitoreId}/recensioni`, { voto: recPopupVoto, testo });
-    document.getElementById('rec-popup-modal')?.remove();
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-success';
-    toast.innerHTML = '<div class="toast-content"><div class="toast-title">Grazie per la recensione!</div></div>';
-    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.style.display = 'block';
+  if (faForn && (!recPopupVotoForn || recPopupVotoForn < 1 || recPopupVotoForn > 5)) {
+    if (errF) { errF.textContent = 'Seleziona un voto da 1 a 5 stelle per il fornitore.'; errF.style.display = 'block'; }
+    valido = false;
   }
+  if (!valido) return;
+  const esiti = await Promise.all([
+    faProd
+      ? apiPost(`/campagne/${campagnaId}/recensioni`, { voto: recPopupVotoProd, testo: document.getElementById('rec-popup-testo-prod')?.value.trim() || '' })
+        .then(() => ({ ok: true }))
+        .catch(err => ({ ok: false, target: 'prod', msg: err.message }))
+      : Promise.resolve({ ok: true, skip: true }),
+    faForn
+      ? apiPost(`/fornitori/${fornitoreId}/recensioni`, { voto: recPopupVotoForn, testo: document.getElementById('rec-popup-testo-forn')?.value.trim() || '' })
+        .then(() => ({ ok: true }))
+        .catch(err => ({ ok: false, target: 'forn', msg: err.message }))
+      : Promise.resolve({ ok: true, skip: true })
+  ]);
+  let tuttoOk = true;
+  esiti.forEach(e => {
+    if (e.ok) return;
+    tuttoOk = false;
+    const el = document.getElementById(`rec-popup-error-${e.target}`);
+    if (el) { el.textContent = e.msg; el.style.display = 'block'; }
+  });
+  if (!tuttoOk) return;
+  if (faProd && campagnaId) recensioniMieProd[campagnaId] = true;
+  if (faForn && fornitoreId) recensioniMie[fornitoreId] = true;
+  document.getElementById('rec-popup-modal')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-success';
+  toast.innerHTML = '<div class="toast-content"><div class="toast-title">Grazie per le recensioni!</div></div>';
+  document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+  renderOrdiniList();
 };
 
 export async function OrdiniPage() {
@@ -171,18 +241,11 @@ export async function OrdiniPage() {
 
     try {
       const shown = sessionStorage.getItem('recPopupShown');
-      const ritirati = ordiniDati.filter(p => p.stato_qr === 'scansionato' && p.fornitore_id);
-      if (!shown && ritirati.length > 0) {
-        for (const r of ritirati) {
-          try {
-            const rec = await apiGet(`/fornitori/${r.fornitore_id}/recensioni`);
-            if (!rec.dati?.mia) {
-              sessionStorage.setItem('recPopupShown', '1');
-              apriRecensionePopup(r.fornitore_id, r.fornitore || '');
-              break;
-            }
-          } catch (_) {}
-        }
+      const candidati = ordiniDati.filter(mancaRecensione);
+      if (!shown && candidati.length > 0) {
+        const r = candidati[0];
+        sessionStorage.setItem('recPopupShown', '1');
+        apriRecensionePopup(r.fornitore_id, r.fornitore || '', r.id_colletta, r.prodotto || '');
       }
     } catch (_) {}
 
@@ -251,18 +314,21 @@ function ordineCardHtml(p) {
   const info = STATI_ORDINE[key];
   const dt = deliveryType(p);
   const showQr = p.stato === 'pagata' && dt === 'ritiro' && key !== 'finale';
-  const showRecensione = key === 'finale' && p.fornitore_id && recensioniMie[p.fornitore_id] !== true;
-  const daPagare = p.stato === 'confermata';
+  const showRecensione = mancaRecensione(p);
+  const daPagare = p.stato === 'confermata' && !(parseFloat(p.importo_acconto) > 0);
+  const attesaSaldo = p.stato === 'confermata' && parseFloat(p.importo_acconto) > 0;
+  const azioneRichiesta = p.stato === 'azione_richiesta';
   const spedizione = dt === 'spedizione';
   const haScelta = !!p.consegna_modalita;
   const nomeF = (p.fornitore || '').replace(/'/g, "\\'");
+  const nomeP = (p.prodotto || '').replace(/'/g, "\\'");
   const dataTxt = new Date(p.data_prenotazione).toLocaleDateString('it-IT');
   const totaleTxt = (p.totale !== null && p.totale !== undefined && p.totale !== '') ? `€${parseFloat(p.totale).toFixed(2)}` : '—';
   const azioneHtml = showQr ? `<button class="btn btn-default btn-sm" onclick="showQr(${p.id})">
       <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
       Mostra QR
     </button>`
-    : (showRecensione ? `<button class="btn btn-outline btn-sm" onclick="apriRecensionePopup(${p.fornitore_id}, '${nomeF}')">Lascia una recensione</button>` : '');
+    : (showRecensione ? `<button class="btn btn-outline btn-sm" onclick="apriRecensionePopup(${p.fornitore_id || 0}, '${nomeF}', ${p.id_colletta || 0}, '${nomeP}')">Lascia una recensione</button>` : '');
   return `
     <div class="card order-card">
       <div class="order-summary-band">
@@ -285,6 +351,15 @@ function ordineCardHtml(p) {
           ${azioneHtml}
         </div>
       </div>
+      ${azioneRichiesta ? `
+      <div class="order-pay-block">
+        <p class="text-sm" style="margin-bottom:var(--space-3);">Il pagamento del saldo non è andato a buon fine. Completa il pagamento per confermare il tuo ordine.</p>
+        <button class="btn btn-default w-full" onclick="handleRiprovaOrdine(${p.id})">Completa pagamento</button>
+      </div>` : ''}
+      ${attesaSaldo ? `
+      <div class="order-pay-block">
+        <p class="text-sm text-secondary">Il saldo verrà addebitato automaticamente alla chiusura della campagna.</p>
+      </div>` : ''}
       ${daPagare ? `
       <div class="order-pay-block">
         <div class="text-sm text-secondary" style="margin-bottom:var(--space-2);">Come vuoi ricevere l'articolo?</div>
@@ -304,7 +379,8 @@ const FILTRO_STATI_ORDINE = [
   ['pagato', 'Pagato'],
   ['fornitore', 'Ordine al fornitore'],
   ['pronto', 'Pronto per il ritiro'],
-  ['finale', 'Ritirato']
+  ['finale', 'Ritirato'],
+  ['azione', 'Azione richiesta']
 ];
 
 function renderOrdiniPage() {

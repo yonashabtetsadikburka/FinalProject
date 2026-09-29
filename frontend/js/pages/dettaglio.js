@@ -1,24 +1,18 @@
 import { getState } from '../state.js';
 import { isAuthenticated } from '../auth.js';
 import { apiGet, apiPost, apiDelete } from '../api.js';
-import { API_URL } from '../constants.js';
+import { API_URL, ACCONTO_PERCENT } from '../constants.js';
 import { Progress } from '../components/progress.js';
 import { Badge } from '../components/badge.js';
 import { Card } from '../components/card.js';
 import { Avatar } from '../components/dropdown.js';
 import { startCountdowns, formatCountdown } from '../countdown.js';
+import { starsMedia } from '../stars.js';
 
 let currentIdColletta = null;
 let currentCampagna = null;
 let currentFornitore = null;
 let currentRecensioni = { media: null, totale: 0, recensioni: [] };
-
-/** Stelle con supporto mezze stelle (overlay a larghezza percentuale). */
-function starsMedia(voto, size) {
-  size = size || 'var(--text-base)';
-  const pct = Math.max(0, Math.min(100, ((parseFloat(voto) || 0) / 5) * 100));
-  return `<span class="stars-wrap" style="font-size:${size};"><span class="stars-bg">★★★★★</span><span class="stars-fg" style="width:${pct}%;">★★★★★</span></span>`;
-}
 
 /** Nome privacy: "Marco R." (solo nome se manca l'iniziale). */
 function nomeRecensore(r) {
@@ -33,15 +27,15 @@ function inizialiRecensore(r) {
   return (nome[0] || 'U') + (ini || '');
 }
 
-/** Sezione recensioni fornitore full-width: riepilogo + distribuzione + lista. */
-function recensioniFornitoreHtml() {
+/** Sezione recensioni del prodotto/campagna full-width: riepilogo + distribuzione + lista. */
+function recensioniProdottoHtml() {
   const rd = currentRecensioni;
   const totale = rd.totale || 0;
   if (totale === 0) {
     return Card({ children: `
       <div class="card-content">
-        <h3 style="margin-bottom: var(--space-2);">Recensioni del fornitore</h3>
-        <p class="text-secondary">Nessuna recensione ancora per questo fornitore.</p>
+        <h3 style="margin-bottom: var(--space-2);">Recensioni sul prodotto</h3>
+        <p class="text-secondary">Nessuna recensione ancora per questo prodotto.</p>
       </div>
     ` });
   }
@@ -71,10 +65,9 @@ function recensioniFornitoreHtml() {
         <div class="text-xs text-secondary">${new Date(r.data_creazione).toLocaleDateString('it-IT')}</div>
       </div>
     </div>`).join('');
-  const fid = currentCampagna?.fornitore_id;
   return Card({ children: `
     <div class="card-content">
-      <h3 style="margin-bottom: var(--space-4);">Recensioni del fornitore</h3>
+      <h3 style="margin-bottom: var(--space-4);">Recensioni sul prodotto</h3>
       <div class="reviews-layout">
         <div class="reviews-summary">
           <div class="reviews-media">${rd.media}</div>
@@ -84,7 +77,6 @@ function recensioniFornitoreHtml() {
         </div>
         <div class="reviews-list">
           ${prime}
-          ${fid ? `<a href="#/fornitori/${fid}" class="btn btn-ghost btn-sm" style="margin-top:var(--space-3);">Vedi tutte le ${totale} recensioni</a>` : ''}
         </div>
       </div>
     </div>
@@ -166,7 +158,7 @@ function condividiDati() {
   const curr = parseFloat(c.prezzo_corrente) || 0;
   const base = parseFloat(c.prezzo_base) || 0;
   const url = window.location.origin + window.location.pathname + '#/campagne/' + (c.id || currentIdColletta);
-  const testo = `Partecipa a "${c.prodotto || 'questa campagna'}" su BuyPool: \u20AC${curr.toFixed(2)} invece di \u20AC${base.toFixed(2)}! Mancano ${mancanti} pezzi all'obiettivo minimo.`;
+  const testo = `Partecipa a "${c.prodotto || 'questa campagna'}" su BuyPool: \u20AC${curr.toFixed(2)} invece di \u20AC${base.toFixed(2)}! Mancano ${mancanti} pezzi al minimo.`;
   return { url, testo };
 }
 
@@ -233,13 +225,21 @@ function renderDettaglio() {
 
   const qty = parseInt(c.quantita_attuale) || 0;
   const min = parseInt(c.quantita_minima) || 1;
+  const scaglioni = Array.isArray(c.scaglioni) ? c.scaglioni : [];
+  const minimo = scaglioni.length > 0 ? scaglioni[0].soglia : min;
+  const primoPrezzo = scaglioni.length > 0 ? parseFloat(scaglioni[0].prezzo) || 0 : 0;
+  const prezzoAcconto = primoPrezzo > 0 ? primoPrezzo : (parseFloat(c.prezzo_corrente) || 0);
+  const confermato = qty >= minimo;
+  const persone = c.partecipanti ?? (Array.isArray(c.partecipazioni) ? c.partecipazioni.length : 0);
   const sogliaRaggiunta = (qty / min) >= 1;
   const scaduta = Number.isFinite(new Date(c.data_limite).getTime()) && new Date(c.data_limite).getTime() < Date.now();
-  const fallita = ['fallita', 'annullata'].includes(c.stato) || (scaduta && !sogliaRaggiunta);
-  const soglia = sogliaRaggiunta || ['riuscita', 'ordine_pronto', 'ordine_fornitore', 'consegnata'].includes(c.stato);
-  const attiva = !soglia && !fallita;
-  const conclusaDettaglio = soglia || fallita;
-  const percentage = Math.min(100, Math.round((qty / min) * 100));
+  // Stato display separato dalle partecipazioni (dal backend; fallback legacy se assente)
+  const display = c.stato_campagna || ((['fallita', 'annullata'].includes(c.stato) || (scaduta && !sogliaRaggiunta)) ? 'non_riuscita'
+    : ((sogliaRaggiunta || ['riuscita', 'ordine_pronto', 'ordine_fornitore', 'consegnata'].includes(c.stato)) ? 'conclusa' : 'in_corso'));
+  const fallita = display === 'non_riuscita';
+  const soglia = display === 'conclusa' || display === 'in_chiusura';
+  const attiva = display === 'in_corso';
+  const conclusaDettaglio = display !== 'in_corso';
   const base = parseFloat(c.prezzo_base) || 0;
   const curr = parseFloat(c.prezzo_corrente) || 0;
   const discount = base > 0 ? Math.round((1 - curr / base) * 100) : 0;
@@ -249,21 +249,32 @@ function renderDettaglio() {
   const nomeProdotto = c.prodotto || 'Prodotto';
   const nomeFornitore = c.fornitore || 'Fornitore';
   const scadenzaTxt = deadline.toLocaleDateString('it-IT') + ' ore ' + deadline.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  const pubblicataTxt = c.data_inizio ? new Date(c.data_inizio).toLocaleDateString('it-IT') : null;
-  const microPrezzo = soglia
-    ? 'al pezzo, con obiettivo attuale raggiunto'
-    : (fallita ? 'al pezzo · campagna non riuscita' : 'al pezzo · Il prezzo finale dipende dall\u2019obiettivo raggiunto');
-  const scaglioni = Array.isArray(c.scaglioni) ? c.scaglioni : [];
+  const accontoPer = (q) => (Math.max(1, q) * prezzoAcconto * ACCONTO_PERCENT / 100).toFixed(2);
   let scaglioneAttivo = -1;
   scaglioni.forEach((s, i) => { if (qty >= s.soglia) scaglioneAttivo = i; });
-  const scaglioniHtml = scaglioni.length > 0 ? `
-    <div class="scaglioni-box">
+  const prossimoScaglione = scaglioneAttivo + 1 < scaglioni.length ? scaglioni[scaglioneAttivo + 1] : null;
+  const fasciaHtml = scaglioni.length > 0 ? `
+    <div class="fascia-bar">
+      ${scaglioni.map((s, i) => {
+        const prev = i === 0 ? 0 : scaglioni[i - 1].soglia;
+        const denom = s.soglia - prev;
+        const fill = denom > 0 ? Math.max(0, Math.min(1, (qty - prev) / denom)) : (qty >= s.soglia ? 1 : 0);
+        return `<div class="fascia-seg${i === scaglioneAttivo ? ' fascia-seg-attivo' : ''}"><div class="fascia-fill" style="width:${Math.round(fill * 100)}%;"></div></div>`;
+      }).join('')}
+    </div>
+    <div class="fascia-boxes">
       ${scaglioni.map((s, i) => `
-        <div class="scaglione${i === scaglioneAttivo ? ' scaglione-attivo' : ''}">.
-          <div class="scaglione-soglia">${s.soglia} pezzi</div>
-          <div class="scaglione-prezzo">&euro;${s.prezzo.toFixed(2)}</div>
+        <div class="fascia-box${i === scaglioneAttivo ? ' fascia-box-attivo' : ''}">
+          ${i <= scaglioneAttivo ? '<span class="fascia-check">&#10003;</span>' : ''}
+          <div class="fascia-box-qty">${s.soglia} pezzi</div>
+          <div class="fascia-box-prezzo">&euro;${parseFloat(s.prezzo).toFixed(2)}</div>
         </div>`).join('')}
-    </div>` : '';
+    </div>` : `${Progress({ value: qty, max: minimo })}`;
+  const fasciaTesto = !confermato
+    ? `${qty} di ${minimo} pezzi prenotati dal gruppo`
+    : (prossimoScaglione && (prossimoScaglione.soglia - qty) > 0
+      ? `Campagna confermata dal gruppo &#10003; Ancora ${prossimoScaglione.soglia - qty} pezzi per il prossimo sconto (&euro;${parseFloat(prossimoScaglione.prezzo).toFixed(2)})`
+      : (scaglioni.length > 0 ? 'Sconto massimo raggiunto &#10003; La campagna resta aperta fino alla scadenza.' : `Campagna confermata dal gruppo &#10003; · ${qty} pezzi prenotati`));
   const f = currentFornitore || {};
   const partnershipTxt = f.data_partnership ? new Date(f.data_partnership).toLocaleDateString('it-IT') : null;
 
@@ -290,12 +301,7 @@ function renderDettaglio() {
             <div class="card-content">
               <div class="shop-title-row">
                 <h1 class="shop-title">${nomeProdotto}</h1>
-                <span class="countdown-box" data-urgency data-scadenza="${c.data_limite || ''}">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  ${conclusaDettaglio
-                    ? '<span>Terminata</span>'
-                    : `<span class="countdown-live" data-scadenza="${c.data_limite || ''}">${formatCountdown(c.data_limite) || '—'}</span>`}
-                </span>
+                ${discount > 0 ? `<span class="discount-badge discount-badge-lg">-${discount}%</span>` : ''}
               </div>
               <div class="shop-supplier-row">
                 <a href="#/fornitori/${c.fornitore_id}">${nomeFornitore}</a>
@@ -307,29 +313,39 @@ function renderDettaglio() {
               <div class="shop-price-row">
                 <span class="shop-price">&euro;${curr.toFixed(2)}</span>
                 <span class="price-original">&euro;${base.toFixed(2)}</span>
-                ${discount > 0 ? `<span class="discount-badge">-${discount}%</span>` : ''}
+                
               </div>
-              <p class="text-xs text-secondary" style="margin-bottom:var(--space-4);">${microPrezzo}</p>
-              ${scaglioniHtml}
+              <p class="text-xs text-secondary" style="margin-bottom:var(--space-4);">al pezzo · Il prezzo finale dipende da quanti pezzi prenota il gruppo</p>
               <div style="margin-bottom: var(--space-3);">
-                <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
-                  <span class="text-sm text-secondary">${qty} su ${min} pezzi per sbloccare questo prezzo</span>
-                  <span class="text-sm font-medium">${percentage}%</span>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2);">
+                  <span class="text-sm text-secondary">${fasciaTesto}</span>
+                  <span class="text-xs text-secondary" style="white-space:nowrap;">${persone} ${persone === 1 ? 'persona ha' : 'persone hanno'} prenotato</span>
                 </div>
-                ${Progress({ value: qty, max: min })}
+                ${fasciaHtml}
               </div>
+              ${!confermato ? `
+              <div class="text-sm" style="margin-bottom:var(--space-4);">
+                <span class="text-secondary">Servono ${minimo} pezzi in totale, non a testa.</span>
+                <span class="info-dot" onclick="toggleMinimoInfo(event)" title="Come funziona il minimo">i</span>
+                <span class="minimo-tooltip" id="minimo-tooltip">Il fornitore vende a prezzo da grossista solo da ${minimo} pezzi. Ognuno può prenotarne quanti vuole, anche uno solo.</span>
+              </div>` : ''}
               <div class="scade-row">
-                ${pubblicataTxt ? `<span class="text-sm text-secondary">Pubblicata ${pubblicataTxt}</span>` : ''}
-                <span class="text-sm text-secondary">Scade ${scadenzaTxt}</span>
+                <span class="text-sm text-secondary">Scadenza ${scadenzaTxt}</span>
+                <span class="countdown-box" data-urgency data-scadenza="${c.data_limite || ''}">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span class="countdown-live" data-scadenza="${c.data_limite || ''}">${formatCountdown(c.data_limite) || '—'}</span>
+                </span>
               </div>
               ${fallita ? `
                 <div style="margin-bottom:var(--space-3);">
                   ${Badge({ variant: 'destructive', children: 'Campagna non riuscita' })}
-                  <p class="text-sm text-secondary" style="margin-top:var(--space-2);">L'obiettivo minimo non &egrave; stato raggiunto. Nessun pagamento &egrave; stato addebitato.</p>
+                  <p class="text-sm text-secondary" style="margin-top:var(--space-2);">Il gruppo non ha raggiunto il minimo. L'acconto versato verr&agrave; rimborsato al 100%.</p>
                 </div>
               ` : soglia ? `
                 <div style="margin-bottom:var(--space-3);">
-                  ${Badge({ variant: 'success', children: 'Obiettivo raggiunto, ordine in preparazione' })}
+                  ${display === 'in_chiusura'
+                    ? Badge({ variant: 'info', children: 'In chiusura: elaborazione saldi in corso' })
+                    : Badge({ variant: 'success', children: 'Il gruppo raggiunge il minimo, ordine in preparazione' })}
                   ${partecipato ? `<p class="text-sm" style="margin-top:var(--space-2);">Hai aderito con ${c.mia_partecipazione.quantita} ${c.mia_partecipazione.quantita === 1 ? 'pezzo' : 'pezzi'}. <a href="#/partecipazioni">Vai alle mie partecipazioni</a></p>` : ''}
                 </div>
               ` : partecipato ? `
@@ -344,17 +360,18 @@ function renderDettaglio() {
                 <div class="text-sm text-secondary" style="margin-bottom:var(--space-3);">Account sospeso: non puoi aderire a nuove campagne.</div>
               ` : `
                 <div style="margin-bottom:var(--space-3);">
-                  <label class="text-sm text-secondary" style="display:block;margin-bottom:var(--space-2);">Quantit&agrave;</label>
+                  <label class="text-sm text-secondary" style="display:block;margin-bottom:var(--space-2);">Quanti ne vuoi tu?</label>
                   <div style="display:flex;align-items:center;gap:var(--space-2);">
                     <button class="btn btn-ghost btn-sm" onclick="changeQty(-1)" style="width:36px;height:36px;padding:0;font-size:var(--text-lg);">-</button>
-                    <input id="qty-input" type="number" value="1" min="1" max="99" style="width:60px;text-align:center;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:var(--space-2);font-size:var(--text-base);" />
+                    <input id="qty-input" type="number" value="1" min="1" max="99" oninput="aggiornaAcconto()" style="width:60px;text-align:center;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:var(--space-2);font-size:var(--text-base);" />
                     <button class="btn btn-ghost btn-sm" onclick="changeQty(1)" style="width:36px;height:36px;padding:0;font-size:var(--text-lg);">+</button>
                   </div>
                 </div>
+                <p class="text-sm" id="acconto-row" data-prezzo="${prezzoAcconto.toFixed(2)}" data-perc="${ACCONTO_PERCENT}" style="margin-bottom:var(--space-3);"></p>
                 <button class="btn btn-default w-full" onclick="handleAderisci()">Prenota</button>
                 <p class="text-xs text-secondary" style="text-align:center;margin-top:var(--space-2);display:flex;align-items:center;justify-content:center;gap:4px;">
                   <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                  Paghi solo se l'obiettivo verr&agrave; raggiunto
+                  Acconto rimborsato al 100% se il gruppo non raggiunge il minimo
                 </p>
               `)}
               <button class="btn btn-outline w-full" style="margin-top:var(--space-2);" onclick="apriCondividi()">
@@ -389,7 +406,7 @@ function renderDettaglio() {
         </div>
       </div>
       <div class="detail-reviews-full">
-        ${recensioniFornitoreHtml()}
+        ${recensioniProdottoHtml()}
       </div>
     </div>
   `;
@@ -429,12 +446,39 @@ window.gateAccedi = function() {
   else window.location.href = 'index.html#/login';
 };
 
+window.toggleMinimoInfo = function(event) {
+  if (event) event.stopPropagation();
+  document.getElementById('minimo-tooltip')?.classList.toggle('open');
+};
+
+if (!window._minimoTooltipListener) {
+  window._minimoTooltipListener = true;
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.minimo-tooltip.open').forEach(m => m.classList.remove('open'));
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.minimo-tooltip.open').forEach(m => m.classList.remove('open'));
+  });
+}
+
+window.aggiornaAcconto = function() {
+  const row = document.getElementById('acconto-row');
+  if (!row) return;
+  const input = document.getElementById('qty-input');
+  const q = input ? Math.max(1, Math.min(99, parseInt(input.value) || 1)) : 1;
+  const prezzo = parseFloat(row.dataset.prezzo) || 0;
+  const perc = parseFloat(row.dataset.perc) || 20;
+  const acconto = (q * prezzo * perc / 100).toFixed(2);
+  row.innerHTML = `Acconto ora: &euro;${acconto} (${perc}% di ${q} &times; &euro;${prezzo.toFixed(2)}). Il saldo viene addebitato alla chiusura, al prezzo finale.`;
+};
+
 window.changeQty = function(delta) {
   const input = document.getElementById('qty-input');
   if (!input) return;
   let val = parseInt(input.value) || 1;
   val = Math.max(1, Math.min(99, val + delta));
   input.value = val;
+  window.aggiornaAcconto();
 };
 
 window.handleAderisci = async function() {
@@ -448,28 +492,250 @@ window.handleAderisci = async function() {
     apriGateModal(quantita);
     return;
   }
+  apriPrenotaModal(quantita);
+};
+
+let prenotaModal = null;
+
+function metodiConsegnaDisponibili() {
+  const c = currentCampagna || {};
+  const sedeId = c.id_sede ? parseInt(c.id_sede) : 0;
+  if (sedeId > 0) {
+    return { metodi: ['ritiro_sede', 'consegna_domicilio'], sedeId, sedeNome: c.punto_ritiro || '', sedeCitta: c.citta || '' };
+  }
+  return { metodi: ['consegna_domicilio'], sedeId: 0, sedeNome: '', sedeCitta: '' };
+}
+
+function pmAccontoStima(qty) {
+  const c = currentCampagna || {};
+  const sc = Array.isArray(c.scaglioni) ? c.scaglioni : [];
+  const primo = sc.length > 0 ? (parseFloat(sc[0].prezzo) || 0) : (parseFloat(c.prezzo_corrente) || 0);
+  return (Math.max(1, qty) * primo * ACCONTO_PERCENT / 100).toFixed(2);
+}
+
+window.apriPrenotaModal = function(quantita) {
+  document.getElementById('prenota-modal')?.remove();
+  const disp = metodiConsegnaDisponibili();
+  const tipoDefault = disp.metodi.includes('ritiro_sede') ? 'ritiro_sede' : 'consegna_domicilio';
+  prenotaModal = {
+    quantita, tipo: tipoDefault, sedeId: disp.sedeId,
+    via: '', cap: '', citta: '', provincia: '',
+    importo: pmAccontoStima(quantita),
+    redirecting: false
+  };
+  const nomeProd = (currentCampagna || {}).prodotto || 'Prodotto';
+  const modalHtml = `
+    <div id="prenota-modal" class="modal-overlay">
+      <div class="modal-content card prenota-modal-card">
+        <div class="card-content">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--space-4);">
+            <h3 style="font-size:var(--text-lg);font-weight:var(--font-semibold);">Conferma la tua prenotazione</h3>
+            <button class="btn btn-ghost btn-sm" onclick="chiudiPrenotaModal()" aria-label="Chiudi">&#10005;</button>
+          </div>
+          <div style="margin-bottom:var(--space-4);">
+            <div class="text-sm text-secondary" style="margin-bottom:var(--space-2);">Come vuoi ricevere l'articolo?</div>
+            <div class="delivery-tabs" id="pm-metodi"></div>
+            <div id="pm-dettaglio-metodo" style="margin-top:var(--space-3);"></div>
+          </div>
+          <div class="riepilogo-box" id="pm-riepilogo"></div>
+          <div id="pm-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
+          <button id="pm-confirm" class="btn btn-default w-full" disabled onclick="vaiStripeCheckout()">Continua su Stripe</button>
+          <p class="text-xs text-secondary" style="text-align:center;margin-top:var(--space-2);">Pagamento sicuro gestito da Stripe · Rimborsabile al 100%</p>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  renderPmMetodi();
+  pmAggiornaRiepilogo();
+  pmAggiornaBottone();
+  apiGet('/profilo').then(res => {
+    const p = res.dati || {};
+    if (!prenotaModal) return;
+    prenotaModal.via = p.indirizzo || '';
+    prenotaModal.cap = p.cap || '';
+    prenotaModal.citta = p.citta || '';
+    prenotaModal.provincia = p.provincia || '';
+    if (prenotaModal.tipo === 'consegna_domicilio') renderPmDettaglioMetodo();
+  }).catch(() => {});
+};
+
+window.chiudiPrenotaModal = function() {
+  document.getElementById('prenota-modal')?.remove();
+  prenotaModal = null;
+};
+
+function renderPmMetodi() {
+  const wrap = document.getElementById('pm-metodi');
+  if (!wrap || !prenotaModal) return;
+  const disp = metodiConsegnaDisponibili();
+  const labels = { ritiro_sede: 'Ritiro in sede', consegna_domicilio: 'Spedizione a domicilio' };
+  wrap.innerHTML = disp.metodi.map(m =>
+    `<button type="button" class="delivery-tab${prenotaModal.tipo === m ? ' active' : ''}" onclick="pmSelezionaMetodo('${m}')">${labels[m]}</button>`
+  ).join('');
+  renderPmDettaglioMetodo();
+}
+
+window.pmSelezionaMetodo = function(tipo) {
+  if (!prenotaModal || prenotaModal.redirecting) return;
+  prenotaModal.tipo = tipo;
+  renderPmMetodi();
+  pmAggiornaRiepilogo();
+  pmAggiornaBottone();
+};
+
+function renderPmDettaglioMetodo() {
+  const box = document.getElementById('pm-dettaglio-metodo');
+  if (!box || !prenotaModal) return;
+  if (prenotaModal.tipo === 'ritiro_sede') {
+    const disp = metodiConsegnaDisponibili();
+    const dove = [disp.sedeNome, disp.sedeCitta].filter(Boolean).join(', ');
+    box.innerHTML = `<p class="text-sm">Ritiro in sede${dove ? ` — <span class="font-medium">${dove}</span>` : ''} <span class="text-secondary">(gratis)</span></p>`;
+  } else {
+    box.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2);">
+        <div class="input-group" style="grid-column:1/-1;"><label class="input-label">Via e numero civico *</label><input id="pm-via" class="input" value="${(prenotaModal.via || '').replace(/"/g, '&quot;')}" oninput="pmIndirizzoCambiato()" placeholder="Via Roma 1"></div>
+        <div class="input-group"><label class="input-label">CAP *</label><input id="pm-cap" class="input" value="${(prenotaModal.cap || '').replace(/"/g, '&quot;')}" oninput="pmIndirizzoCambiato()" placeholder="06100"></div>
+        <div class="input-group"><label class="input-label">Città *</label><input id="pm-citta" class="input" value="${(prenotaModal.citta || '').replace(/"/g, '&quot;')}" oninput="pmIndirizzoCambiato()" placeholder="Perugia"></div>
+        <div class="input-group" style="grid-column:1/-1;"><label class="input-label">Provincia</label><input id="pm-provincia" class="input" value="${(prenotaModal.provincia || '').replace(/"/g, '&quot;')}" oninput="pmIndirizzoCambiato()" placeholder="PG" maxlength="2"></div>
+      </div>`;
+  }
+}
+
+window.pmIndirizzoCambiato = function() {
+  if (!prenotaModal || prenotaModal.redirecting) return;
+  prenotaModal.via = document.getElementById('pm-via')?.value || '';
+  prenotaModal.cap = document.getElementById('pm-cap')?.value || '';
+  prenotaModal.citta = document.getElementById('pm-citta')?.value || '';
+  prenotaModal.provincia = document.getElementById('pm-provincia')?.value || '';
+  pmAggiornaRiepilogo();
+  pmAggiornaBottone();
+};
+
+function pmSceltaCompleta() {
+  if (!prenotaModal) return false;
+  if (prenotaModal.tipo === 'ritiro_sede') return metodiConsegnaDisponibili().sedeId > 0;
+  return (prenotaModal.via.trim() !== '' && prenotaModal.cap.trim() !== '' && prenotaModal.citta.trim() !== '');
+}
+
+function pmAggiornaRiepilogo() {
+  const box = document.getElementById('pm-riepilogo');
+  if (!box || !prenotaModal) return;
+  const nomeProd = (currentCampagna || {}).prodotto || 'Prodotto';
+  let metodoTxt = '';
+  if (prenotaModal.tipo === 'ritiro_sede') {
+    const disp = metodiConsegnaDisponibili();
+    metodoTxt = 'Ritiro in sede' + ([disp.sedeNome, disp.sedeCitta].filter(Boolean).join(', ') ? ' — ' + [disp.sedeNome, disp.sedeCitta].filter(Boolean).join(', ') : '');
+  } else {
+    const ind = [prenotaModal.via.trim(), prenotaModal.cap.trim() + (prenotaModal.citta.trim() ? ' ' + prenotaModal.citta.trim() : '')].filter(s => s.trim() !== '');
+    metodoTxt = 'Spedizione a domicilio' + (ind.length ? ' — ' + ind.join(', ') : '');
+  }
+  const importo = prenotaModal.importo || pmAccontoStima(prenotaModal.quantita);
+  box.innerHTML = `
+    <div class="font-medium" style="margin-bottom:var(--space-1);">${nomeProd} &times; ${prenotaModal.quantita}</div>
+    <div class="text-sm text-secondary" style="margin-bottom:var(--space-2);">${metodoTxt}</div>
+    <div style="font-weight:var(--font-semibold);">Acconto da pagare ora: &euro;${importo}</div>`;
+}
+
+function pmAggiornaBottone() {
+  const btn = document.getElementById('pm-confirm');
+  if (!btn || !prenotaModal) return;
+  btn.disabled = !pmSceltaCompleta() || prenotaModal.redirecting;
+  btn.textContent = prenotaModal.redirecting ? 'Reindirizzamento...' : 'Continua su Stripe';
+}
+
+/** Click su "Continua su Stripe": crea la Checkout Session e reindirizza a pagina intera. */
+window.vaiStripeCheckout = async function() {
+  if (!prenotaModal || prenotaModal.redirecting || !pmSceltaCompleta()) return;
+  prenotaModal.redirecting = true;
+  pmMostraErrore('');
+  pmAggiornaBottone();
   try {
-    const res = await apiPost(`/campagne/${currentIdColletta}/partecipazioni`, { quantita });
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-success';
-    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Partecipazione confermata!</div><div class="toast-description">${res.dati?.messaggio || 'Nessun addebito ora.'}</div></div>`;
-    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-    const dettaglio = await apiGet(`/campagne/${currentIdColletta}`);
-    currentCampagna = dettaglio.dati;
-    renderDettaglio();
-    const shareToast = document.createElement('div');
-    shareToast.className = 'toast toast-success';
-    shareToast.innerHTML = `<div class="toast-content"><div class="toast-title">Condividi la campagna sui social per raggiungere l'obiettivo minimo</div><div style="display:flex;gap:var(--space-2);margin-top:var(--space-2);"><button class="btn btn-default btn-sm" onclick="apriCondividi();this.closest('.toast').remove()">Condividi ora</button><button class="btn btn-ghost btn-sm" onclick="this.closest('.toast').remove()">Chiudi</button></div></div>`;
-    document.querySelector('.toast-container')?.appendChild(shareToast) || document.body.appendChild(shareToast);
+    const delivery = prenotaModal.tipo === 'ritiro_sede'
+      ? { tipo: 'ritiro_sede', id_sede: metodiConsegnaDisponibili().sedeId }
+      : { tipo: 'consegna_domicilio', via: prenotaModal.via.trim(), cap: prenotaModal.cap.trim(), citta: prenotaModal.citta.trim(), provincia: prenotaModal.provincia.trim() };
+    const res = await apiPost('/pagamento/acconto-checkout', {
+      colletta_id: currentIdColletta,
+      quantita: prenotaModal.quantita,
+      delivery
+    });
+    if (!res.dati?.checkout_url) throw new Error('URL di pagamento non ricevuto');
+    window.location.href = res.dati.checkout_url;
   } catch (err) {
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-error';
-    toast.innerHTML = `<div class="toast-content"><div class="toast-title">Errore</div><div class="toast-description">${err.message}</div></div>`;
-    document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    pmMostraErrore(err.message || 'Errore nella creazione del pagamento.');
+    if (prenotaModal) prenotaModal.redirecting = false;
+    pmAggiornaBottone();
   }
 };
+
+function pmMostraErrore(msg) {
+  const el = document.getElementById('pm-error');
+  if (!el) return;
+  if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function showToastOk(title, desc) {
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-success';
+  toast.innerHTML = `<div class="toast-content"><div class="toast-title">${title}</div>${desc ? `<div class="toast-description">${desc}</div>` : ''}</div>`;
+  document.querySelector('.toast-container')?.appendChild(toast) || document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+/** Overlay di attesa post-pagamento: polling finché il webhook crea la prenotazione. */
+function mostraAttesaPagamento() {
+  if (document.getElementById('pagamento-attesa')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'pagamento-attesa';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-content card" style="max-width:380px;width:92%;">
+      <div class="card-content" style="text-align:center;padding:var(--space-8) var(--space-6);">
+        <div class="animate-spin" style="display:inline-flex;margin-bottom:var(--space-4);color:var(--color-primary);">
+          <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </div>
+        <h3 style="margin-bottom:var(--space-2);">Stiamo confermando il tuo pagamento...</h3>
+        <p class="text-sm text-secondary" id="pagamento-attesa-testo">Attendi qualche secondo.</p>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function nascondiAttesaPagamento() {
+  document.getElementById('pagamento-attesa')?.remove();
+}
+
+async function pollInVerifica(tentativi, sessionId) {
+  if (tentativi >= 15) {
+    const t = document.getElementById('pagamento-attesa-testo');
+    if (t) t.textContent = 'Il pagamento è in elaborazione, riceverai una conferma via email a breve.';
+    const spin = document.querySelector('#pagamento-attesa .animate-spin');
+    if (spin) spin.classList.remove('animate-spin');
+    try { history.replaceState(null, '', window.location.pathname + '#/campagne/' + currentIdColletta); } catch (e) {}
+    return;
+  }
+  await new Promise(r => setTimeout(r, 2000));
+  try {
+    if (sessionId) {
+      try {
+        await apiGet(`/pagamento/stato?session_id=${encodeURIComponent(sessionId)}`);
+      } catch (_) {}
+    }
+    const res = await apiGet(`/campagne/${currentIdColletta}`);
+    currentCampagna = res.dati;
+    if (currentCampagna.mia_partecipazione) {
+      nascondiAttesaPagamento();
+      showToastOk('Prenotazione confermata!', 'Trovi il tuo ordine in "I miei ordini".');
+      renderDettaglio();
+      window.aggiornaAcconto();
+      startCountdowns();
+      try { history.replaceState(null, '', window.location.pathname + '#/campagne/' + currentIdColletta); } catch (e) {}
+      return;
+    }
+  } catch (_) {}
+  pollInVerifica(tentativi + 1, sessionId);
+}
 
 window.handleAnnullaAdesione = async function(campagnaId) {
   if (!confirm('Vuoi davvero annullare la tua adesione a questa campagna?')) return;
@@ -501,10 +767,9 @@ export async function DettaglioPage(params) {
   try {
     const res = await apiGet(`/campagne/${params.id}`);
     currentCampagna = res.dati;
-    const fid = currentCampagna.fornitore_id;
     currentFornitore = currentCampagna.fornitore_info || null;
     try {
-      const recRes = fid ? await apiGet(`/fornitori/${fid}/recensioni`) : { dati: null };
+      const recRes = await apiGet(`/campagne/${params.id}/recensioni`);
       currentRecensioni = recRes.dati || { media: null, totale: 0, recensioni: [] };
     } catch (_) {
       currentRecensioni = { media: null, totale: 0, recensioni: [] };
@@ -518,7 +783,15 @@ export async function DettaglioPage(params) {
         sessionStorage.removeItem('buypool_pending_adesione');
       }
     } catch (_) {}
+    window.aggiornaAcconto();
     startCountdowns();
+    try {
+      const q = new URLSearchParams((window.location.hash.split('?')[1] || '').split('#')[0]);
+      if (q.get('pagamento') === 'in_verifica') {
+        mostraAttesaPagamento();
+        pollInVerifica(0, q.get('session_id') || '');
+      }
+    } catch (_) {}
   } catch (err) {
     content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p><a href="#/" class="btn btn-default">Torna alle campagne</a></div></div>`;
   }
