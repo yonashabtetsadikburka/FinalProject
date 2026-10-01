@@ -15,5 +15,5 @@ return [
     'pass' => 'root',
 
     // Google OAuth — Client ID ottenuto da Google Cloud Console
-    'google_client_id' => '22127010556-mss3ikiiugra9aqv3im8m1jenn3jj8cd.apps.googleusercontent.com',
+    'google_client_id' => 'YOUR_GOOGLE_CLIENT_ID_HERE',
 ];

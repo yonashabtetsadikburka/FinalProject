@@ -36,45 +36,55 @@ function renderPropostaCard(p) {
   const votato = p.mio_voto === 'favore';
   const mia = user && p.proponente_id === user.id;
   const votabile = p.stato === 'in_votazione' && user && !mia;
+  const headTone = (p.stato === 'rifiutata' || p.stato === 'respinta_votazione') ? 'danger'
+    : (STATI_MIE_BADGES[p.stato] === 'success' ? 'success'
+    : (STATI_MIE_BADGES[p.stato] === 'warning' ? 'warning' : 'neutral'));
+  const badgeVariant = (p.stato === 'rifiutata' || p.stato === 'respinta_votazione') ? 'destructive'
+    : (STATI_MIE_BADGES[p.stato] || 'secondary');
   return `
-    <div class="card" style="margin-bottom:var(--space-3);">
-      <div class="card-content">
+    <div class="card card-elevate">
+      <div class="prop-head prop-head-${headTone}" style="padding-top:5px;padding-bottom:0;height:40.8px;">
+        <span class="text-sm text-secondary">Stato proposta</span>
+        <span style="flex-shrink:0;">${Badge({ variant: badgeVariant, children: STATI_MIE_LABELS[p.stato] || p.stato })}</span>
+      </div>
+      <div class="card-content" style="padding-top:10px;padding-bottom:0;">
         <div style="display:flex;gap:var(--space-3);">
-          <div class="order-thumb order-thumb-empty" style="flex-shrink:0;">
+          <div class="order-thumb order-thumb-empty prop-thumb" style="flex-shrink:0;">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
           </div>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;justify-content:space-between;align-items:start;gap:var(--space-2);margin-bottom:var(--space-1);">
-              <h3 style="font-size:var(--text-base);font-weight:var(--font-semibold);">${p.nome_prodotto}</h3>
-              <span style="flex-shrink:0;">${Badge({ variant: STATI_MIE_BADGES[p.stato] || 'secondary', children: STATI_MIE_LABELS[p.stato] || p.stato })}</span>
-            </div>
-            ${p.descrizione ? `<p class="text-sm text-secondary" style="margin-bottom:var(--space-2);">${p.descrizione}</p>` : ''}
-            ${p.link_riferimento ? `<a href="${p.link_riferimento}" target="_blank" rel="noopener" class="text-xs" style="display:inline-block;margin-bottom:var(--space-2);">Link di riferimento &nearr;</a>` : ''}
-            ${p.motivo ? `<div class="text-xs" style="margin-bottom:var(--space-2);padding:var(--space-2);background:var(--color-bg);border-radius:var(--radius-sm);">Motivo: ${p.motivo}</div>` : ''}
-            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);">
+          <div style="flex:1;min-width:0;height:100px;">
+            <h3 class="prop-body-title">${p.nome_prodotto}</h3>
+            ${p.descrizione
+              ? `<p class="text-sm text-secondary prop-slot-desc" style="height:25px;">${p.descrizione}</p>`
+              : `<p class="text-sm text-secondary prop-slot-desc prop-slot-empty" style="height:25px;" aria-hidden="true">&nbsp;</p>`}
+            ${p.link_riferimento
+              ? `<a href="${p.link_riferimento}" target="_blank" rel="noopener" class="text-xs prop-slot-link" style="display:inline-block;margin-bottom:var(--space-1);">Link di riferimento &nearr;</a>`
+              : `<span class="text-xs prop-slot-link" style="display:inline-block;margin-bottom:var(--space-1);visibility:hidden;" aria-hidden="true;">&nbsp;</span>`}
+            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-1);">
               ${Avatar({ fallback: inizialiProponente(p), size: 'sm' })}
               <span class="text-xs text-secondary">Proposto da ${nomeProponente(p)}</span>
             </div>
-            <div style="display:flex;align-items:center;gap:var(--space-3);">
-              <div style="flex:1;min-width:0;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-1);">
-                  <span class="text-xs text-secondary">${voti} di ${SOGLIA_VOTI_PROPOSTA} voti per essere considerata</span>
-                  <span class="text-xs font-medium">${pct}%</span>
-                </div>
-                ${Progress({ value: voti, max: SOGLIA_VOTI_PROPOSTA })}
-              </div>
-              ${votabile ? (votato ? `
-                <button class="btn btn-default btn-sm" style="flex-shrink:0;" onclick="handleNonVotare(${p.id_proposta})">
-                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                  Votato
-                </button>` : `
-                <button class="btn btn-outline btn-sm" style="flex-shrink:0;" onclick="handleVota(${p.id_proposta})">
-                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
-                  Vota
-                </button>`) : ''}
-            </div>
+            ${p.motivo
+              ? `<div class="text-xs prop-slot-motivo" style="padding:var(--space-2);background:var(--color-bg);border-radius:var(--radius-sm);">Motivo: ${p.motivo}</div>`
+              : `<div class="text-xs prop-slot-motivo" style="padding:var(--space-2);visibility:hidden;" aria-hidden="true;">&nbsp;</div>`}
           </div>
+          ${votabile ? `<div class="prop-vote-side">${votato ? `
+          <button class="btn btn-default btn-sm" onclick="handleNonVotare(${p.id_proposta})">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Votato
+          </button>` : `
+          <button class="btn btn-outline btn-sm" onclick="handleVota(${p.id_proposta})">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
+            Vota
+          </button>`}</div>` : ''}
         </div>
+      </div>
+      <div class="prop-progress">
+        <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-1);">
+          <span class="text-xs text-secondary">${voti} di ${SOGLIA_VOTI_PROPOSTA} voti per essere considerata</span>
+          <span class="text-xs font-medium">${pct}%</span>
+        </div>
+        ${Progress({ value: voti, max: SOGLIA_VOTI_PROPOSTA, successOnly: true })}
       </div>
     </div>`;
 }
@@ -125,7 +135,7 @@ function disegnaTab() {
   const content = document.getElementById('proposte-tab-content');
   if (!content) return;
   const proposte = proposteFiltrate();
-  content.innerHTML = proposte.length > 0 ? proposte.map(p => renderPropostaCard(p)).join('')
+  content.innerHTML = proposte.length > 0 ? `<div class="cards-grid">` + proposte.map(p => renderPropostaCard(p)).join('') + `</div>`
     : `<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">${EMPTY_TITLES[currentTab]}</h2></div>`;
 }
 

@@ -1,16 +1,16 @@
 import { apiGet, apiPost } from '../api.js';
 import { setPageInterval } from '../page-timers.js';
-import { Badge } from '../components/badge.js';
 import { showQrModal } from '../qr-modal.js';
-import { STATI_ORDINE, deliveryType, statoOrdine, etichettaStato } from '../stato-ordine.js';
+import { deliveryType, statoOrdine, etichettaStato } from '../stato-ordine.js';
 
 /** Micro-label secondaria solo per spedizione in fase fornitore o successiva. */
 function microSpedizione(p) {
   if (deliveryType(p) !== 'spedizione') return '';
   const key = statoOrdine(p);
   if (key !== 'fornitore' && key !== 'finale') return '';
-  const map = { in_attesa: 'In preparazione', pronta: 'In preparazione', spedita: 'Spedito', consegnata: 'Consegnato oggi', ritirata: 'Consegnato oggi' };
-  return `<span class="text-xs text-secondary">${map[p.consegna_stato] || 'In preparazione'}</span>`;
+  const map = { in_attesa: 'In preparazione', pronta: 'In preparazione', spedita: 'Spedito' };
+  const txt = map[p.consegna_stato] || '';
+  return txt ? `<span class="text-xs text-secondary">${txt}</span>` : '';
 }
 
 let ordiniDati = [];
@@ -290,28 +290,8 @@ function thumbHtml(p) {
   return `<img class="order-thumb" src="${src}" alt="${(p.prodotto || 'Prodotto').replace(/"/g, '&quot;')}" loading="lazy" />`;
 }
 
-function ritiroFasciaHtml(p) {
-  if (deliveryType(p) === 'spedizione' || !p.sede_nome) return '';
-  const dettagli = [p.sede_indirizzo, p.sede_citta].filter(Boolean).join(', ');
-  return `<span class="order-band-field">Ritiro
-    <span class="pickup-wrap">
-      <button class="pickup-link" onclick="togglePickupPopover(${p.id}, event)">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
-        ${p.sede_nome}
-      </button>
-      <span class="pickup-popover" id="pickup-pop-${p.id}" onclick="event.stopPropagation()">
-        <span class="font-medium text-sm" style="display:block;margin-bottom:var(--space-1);">${p.sede_nome}</span>
-        ${dettagli ? `<span class="text-sm text-secondary" style="display:block;">${dettagli}</span>` : ''}
-        ${p.sede_orari ? `<span class="text-sm text-secondary" style="display:block;margin-top:var(--space-1);">${p.sede_orari}</span>` : ''}
-        ${p.sede_telefono ? `<span class="text-sm text-secondary" style="display:block;margin-top:var(--space-1);">${p.sede_telefono}</span>` : ''}
-      </span>
-    </span>
-  </span>`;
-}
-
 function ordineCardHtml(p) {
   const key = statoOrdine(p);
-  const info = STATI_ORDINE[key];
   const dt = deliveryType(p);
   const showQr = p.stato === 'pagata' && dt === 'ritiro' && key !== 'finale';
   const showRecensione = mancaRecensione(p);
@@ -329,25 +309,46 @@ function ordineCardHtml(p) {
       Mostra QR
     </button>`
     : (showRecensione ? `<button class="btn btn-outline btn-sm" onclick="apriRecensionePopup(${p.fornitore_id || 0}, '${nomeF}', ${p.id_colletta || 0}, '${nomeP}')">Lascia una recensione</button>` : '');
+  const statoCls = { attesa: 'attesa', pagato: 'pagato', fornitore: 'fornitore', pronto: 'pronto', finale: 'finale', fallita: 'fallita', azione: 'azione' }[key] || 'attesa';
+  const dataEventoRaw = key === 'finale' ? (dt === 'spedizione' ? p.data_consegna : p.data_ritiro) : null;
+  const dataEventoTxt = (() => {
+    if (!dataEventoRaw) return '';
+    const t = new Date(dataEventoRaw);
+    if (!Number.isFinite(t.getTime())) return '';
+    return t.toLocaleDateString('it-IT') + ' - ' + t.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  })();
+  const ritiroBandHtml = (() => {
+    if (dt !== 'ritiro' || !p.sede_nome) return '';
+    const dettagli = [p.sede_indirizzo, p.sede_citta].filter(Boolean).join(', ');
+    const etichetta = `Ritiro ${p.sede_nome}`;
+    return `<span class="pickup-wrap">
+      <button class="pickup-link pickup-link-band" title="${etichetta.replace(/"/g, '&quot;')}" onclick="togglePickupPopover(${p.id}, event)">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+        <span class="pickup-text">${etichetta}</span>
+      </button>
+      <span class="pickup-popover" id="pickup-pop-${p.id}" onclick="event.stopPropagation()">
+        <span class="font-medium text-sm" style="display:block;margin-bottom:var(--space-1);">${p.sede_nome}</span>
+        ${dettagli ? `<span class="text-sm text-secondary" style="display:block;">${dettagli}</span>` : ''}
+        ${p.sede_orari ? `<span class="text-sm text-secondary" style="display:block;margin-top:var(--space-1);">${p.sede_orari}</span>` : ''}
+        ${p.sede_telefono ? `<span class="text-sm text-secondary" style="display:block;margin-top:var(--space-1);">${p.sede_telefono}</span>` : ''}
+      </span>
+    </span>`;
+  })();
+  const spedBandTxt = dt === 'spedizione' ? (microSpedizione(p) || (!p.consegna_stato ? '<span class="text-xs">Spedizione a domicilio</span>' : '')) : '';
   return `
-    <div class="card order-card">
+    <div class="card order-card card-elevate">
       <div class="order-summary-band">
         <span class="order-band-field">Prenotato il <strong>${dataTxt}</strong></span>
         <span class="order-band-field">Totale <strong>${totaleTxt}</strong></span>
-        ${ritiroFasciaHtml(p)}
         <span class="order-band-field order-number">Ordine #${p.id}</span>
       </div>
       <div class="order-product-row">
         ${thumbHtml(p)}
-        <div class="order-product-text">
-          <a href="#/campagne/${p.id_colletta}" class="order-product-name">${p.prodotto || 'Campagna #' + p.id_colletta}</a>
+        <div class="order-product-text" style="min-width:0;">
+          <a href="#/campagne/${p.id_colletta}" class="order-product-name" title="${(p.prodotto || '').replace(/"/g, '&quot;')}">${p.prodotto || 'Campagna #' + p.id_colletta}</a>
           <div class="text-xs text-secondary">${p.fornitore || ''} &middot; ${p.quantita} pezzi</div>
         </div>
         <div class="order-product-side">
-          <span style="display:inline-flex;align-items:center;gap:var(--space-2);">
-            ${Badge({ variant: info.variant, children: etichettaStato(p) })}
-            ${microSpedizione(p)}
-          </span>
           ${azioneHtml}
         </div>
       </div>
@@ -363,13 +364,21 @@ function ordineCardHtml(p) {
       ${daPagare ? `
       <div class="order-pay-block">
         <div class="text-sm text-secondary" style="margin-bottom:var(--space-2);">Come vuoi ricevere l'articolo?</div>
-        <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3);">
+        <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-2);">
           <button class="btn ${!spedizione ? 'btn-default' : 'btn-outline'} btn-sm" onclick="scegliConsegna(${p.id}, 'ritiro_sede')">Ritiro in sede (gratis)</button>
           <button class="btn ${spedizione ? 'btn-default' : 'btn-outline'} btn-sm" onclick="scegliConsegna(${p.id}, 'consegna_domicilio')">Spedizione (+&euro;${costoSpedizione.toFixed(2)})</button>
         </div>
-        ${haScelta ? `<button class="btn btn-default w-full" onclick="handlePagaOrdine(${p.id})">Completa pagamento</button>`
+        ${haScelta ? `<button class="btn btn-default btn-sm w-full" onclick="handlePagaOrdine(${p.id})">Completa pagamento</button>`
           : `<p class="text-xs text-secondary">Scegli come ricevere l'articolo per procedere al pagamento.</p>`}
       </div>` : ''}
+      <div class="order-status-band order-status-${statoCls}">
+        <span class="order-status-label">${etichettaStato(p)}</span>
+        <span class="band-right">
+          ${dataEventoTxt ? `<span class="text-sm">Data: ${dataEventoTxt}</span>` : ''}
+          ${ritiroBandHtml}
+          ${spedBandTxt}
+        </span>
+      </div>
     </div>`;
 }
 
@@ -412,7 +421,7 @@ function renderOrdiniList() {
     statoOrdine(p) !== 'fallita' && p.stato !== 'prenotata' &&
     ((p.prodotto || '').toLowerCase().includes(ordiniFiltroQ) || (p.fornitore || '').toLowerCase().includes(ordiniFiltroQ)) &&
     (ordiniFiltroStato === '' || statoOrdine(p) === ordiniFiltroStato));
-  list.innerHTML = filtrati.length > 0 ? filtrati.map(ordineCardHtml).join('')
+  list.innerHTML = filtrati.length > 0 ? `<div class="cards-grid cards-grid-wide">` + filtrati.map(ordineCardHtml).join('') + `</div>`
     : '<div class="empty-state" style="padding:var(--space-8);"><h2 class="empty-state-title">Nessun ordine</h2><p class="empty-state-description">Nessun ordine corrisponde ai filtri selezionati.</p><a href="#/" class="btn btn-default">Esplora le campagne</a></div>';
   const countEl = document.getElementById('ordini-count');
   if (countEl) countEl.textContent = `${filtrati.length} ${filtrati.length === 1 ? 'ordine' : 'ordini'}`;

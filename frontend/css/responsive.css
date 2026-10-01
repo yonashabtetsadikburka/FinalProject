@@ -7,6 +7,18 @@
     grid-template-columns: 1fr;
   }
 
+  .detail-layout-shop {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .reviews-layout {
+    grid-template-columns: 1fr;
+  }
+
   .ritiro-layout {
     grid-template-columns: 1fr;
   }
@@ -41,6 +53,10 @@
     grid-template-columns: 1fr;
   }
 
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -48,6 +64,20 @@
   .search-filter-bar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .how-steps {
+    flex-wrap: wrap;
+    row-gap: var(--space-4);
+  }
+
+  .how-step {
+    flex: 0 0 33.333%;
+    max-width: none;
+  }
+
+  .how-step:nth-child(4)::before {
+    display: none;
   }
 
   .campagne-filter-bar .campagne-select {
@@ -137,6 +167,14 @@
 }
 
 @media (max-width: 480px) {
+  .scaglioni-box {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(120px, 1fr);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+  }
+
   .dashboard-grid {
     grid-template-columns: 1fr;
   }

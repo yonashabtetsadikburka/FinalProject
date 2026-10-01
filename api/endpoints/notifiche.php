@@ -59,7 +59,7 @@ function notifiche_invia(): void
     $tipi_validi = ['SCADENZA','ORDINE_DISPONIBILE','ORDINE_INVIATO','RITIRATO',
         'PROPOSTA_APPROVATA','PAGAMENTO_RIUSCITO','PAGAMENTO_RICEVUTO','PAGAMENTO_FALLITO',
         'RIMBORSO','MOQ_RAGGIUNTO','ORDINE_CONFERMATO','MERCE_PRONTA','SPEDITO',
-        'NUOVO_SCAGLIONE','TRACCIAMENTO','SISTEMA','ORDINE_RICEVUTO'];
+        'NUOVO_SCAGLIONE','TRACCIAMENTO','SISTEMA','ORDINE_RICEVUTO','SOGLIA_PERSA'];
     if (!in_array($tipo, $tipi_validi, true)) {
         throw new AppError('TIPO_NON_VALIDO', 'Tipo notifica non valido');
     }

@@ -13,6 +13,8 @@ function partecipazioni_aderisci(int $colletta_id): void
 
 /**
  * Ritira la propria adesione dalla campagna.
+ * Blocca post-scadenza; se il totale scende sotto il MOQ, le altre
+ * 'confermata' tornano 'in_attesa' e vengono notificate.
  */
 function partecipazioni_ritira(int $colletta_id): void
 {
@@ -26,15 +28,28 @@ function partecipazioni_ritira(int $colletta_id): void
         throw new AppError('CAMPAGNA_CONSEGNATA', 'Non si puo\' uscire da una campagna consegnata');
     }
 
-    $st = db()->prepare('SELECT id, quantita, stato, importo_acconto FROM prenotazioni WHERE id_colletta = ? AND id_utente = ?');
+    $st = db()->prepare(
+        'SELECT p.id, p.quantita, p.stato, p.importo_acconto,
+                c.data_limite, c.quantita_minima, pr.nome AS prodotto
+           FROM prenotazioni p
+           JOIN collette c ON c.id = p.id_colletta
+           JOIN prodotti pr ON pr.id = c.id_prodotto
+          WHERE p.id_colletta = ? AND p.id_utente = ?'
+    );
     $st->execute([$colletta_id, $io]);
     $p = $st->fetch();
     if (!$p) {
         throw new AppError('NON_PARTECIPI', 'Non risulti iscritto a questa campagna', 404);
     }
+    if (strtotime($p['data_limite'] ?? '') < time()) {
+        throw new AppError('CAMPAGNA_SCADUTA', 'La campagna è scaduta: non puoi più annullare la prenotazione.', 409);
+    }
     if (in_array($p['stato'], ['pagata', 'rimborsata'], true)) {
         throw new AppError('PAGAMENTO_EFFETTUATO', 'Non puoi annullare: pagamento già effettuato. Contatta l\'assistenza per un rimborso.');
     }
+    $nomeProdotto = $p['prodotto'] ?? 'una campagna';
+    $dataLimiteTxt = date('d/m/Y', strtotime($p['data_limite']));
+    $moq = max(1, (int)$p['quantita_minima']);
 
     // Se l'acconto risulta pagato, rimborsalo su Stripe prima di cancellare
     if ((float)($p['importo_acconto'] ?? 0) > 0) {
@@ -62,7 +77,37 @@ function partecipazioni_ritira(int $colletta_id): void
 
     $nuovoStato = ricalcola_stato($colletta_id);
 
-    json_ok(['stato' => $nuovoStato]);
+    // Flip-back: sotto MOQ le altre 'confermata' tornano 'in_attesa' + notifica
+    $sogliaPersa = false;
+    $notificati = 0;
+    $st = db()->prepare('SELECT quantita_attuale FROM collette WHERE id = ?');
+    $st->execute([$colletta_id]);
+    if ((int)$st->fetchColumn() < $moq) {
+        $st = db()->prepare(
+            "SELECT DISTINCT id_utente FROM prenotazioni WHERE id_colletta = ? AND stato = 'confermata'"
+        );
+        $st->execute([$colletta_id]);
+        $coinvolti = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+        if (!empty($coinvolti)) {
+            $st = db()->prepare(
+                "UPDATE prenotazioni SET stato = 'prenotata' WHERE id_colletta = ? AND stato = 'confermata'"
+            );
+            $st->execute([$colletta_id]);
+            if ($st->rowCount() > 0) {
+                $sogliaPersa = true;
+                $stN = db()->prepare(
+                    'INSERT INTO notifiche (id_utente, tipo, titolo, messaggio, tipo_riferimento, id_riferimento)
+                     VALUES (?, \'SOGLIA_PERSA\', \'Minimo non più raggiunto\', ?, \'colletta\', ?)'
+                );
+                foreach ($coinvolti as $uid) {
+                    $stN->execute([$uid, "Un partecipante ha annullato la prenotazione per \"$nomeProdotto\": il gruppo non ha più raggiunto il minimo. La campagna resta aperta fino al $dataLimiteTxt.", $colletta_id]);
+                    $notificati++;
+                }
+            }
+        }
+    }
+
+    json_ok(['stato' => $nuovoStato, 'soglia_persa' => $sogliaPersa, 'notificati' => $notificati]);
 }
 
 /**
@@ -76,8 +121,8 @@ function partecipazioni_mie(): void
                 p.importo_acconto, p.importo_saldo,
                 c.quantita_minima, c.quantita_attuale, c.data_limite, c.stato AS stato_colletta,
                 pr.nome AS prodotto, f.nome_azienda AS fornitore, f.id AS fornitore_id,
-                qr.stato AS stato_qr,
-                co.id AS id_consegna, co.modalita AS consegna_modalita, co.importo_consegna, co.stato AS consegna_stato,
+                qr.stato AS stato_qr, qr.data_scansione AS data_ritiro,
+                co.id AS id_consegna, co.modalita AS consegna_modalita, co.importo_consegna, co.stato AS consegna_stato, co.data_effettiva AS data_consegna,
                 s.nome AS sede_nome, s.indirizzo AS sede_indirizzo, s.citta AS sede_citta,
                 s.telefono AS sede_telefono, s.orari AS sede_orari,
                 (SELECT url FROM immagini_prodotto WHERE id_prodotto = c.id_prodotto ORDER BY principale DESC, ordine ASC LIMIT 1) AS immagine,
