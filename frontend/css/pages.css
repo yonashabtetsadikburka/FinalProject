@@ -182,6 +182,128 @@
   align-items: start;
 }
 
+/* Griglia "Le mie campagne" fornitore: 2-3 colonne desktop, 1 su mobile */
+.camp-forn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* Header card campagna fornitore, tinto per stato (pattern part-head) */
+.camp-f-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.camp-f-head .text-xs {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.camp-f-in_corso {
+  background-color: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.camp-f-confermata {
+  background-color: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.camp-f-conclusa {
+  background-color: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.camp-f-non_riuscita {
+  background-color: var(--gray-100);
+  color: var(--gray-600);
+}
+
+/* Barra avanzamento campagna fornitore: verde se raggiunto, info in proporzione */
+.camp-f-bar {
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.camp-f-fill {
+  height: 100%;
+  background: var(--color-info);
+  border-radius: 3px;
+  transition: width 0.2s ease-in-out;
+}
+
+.camp-f-fill.raggiunto {
+  background: var(--color-success);
+}
+
+/* Toggle switch reale (es. "Solo miei prodotti") */
+.switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  inset: 0;
+  background-color: var(--gray-300);
+  border-radius: var(--radius-full);
+  transition: background-color 0.15s ease-in-out;
+}
+
+.switch-slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  background-color: var(--color-white);
+  border-radius: 50%;
+  transition: transform 0.15s ease-in-out;
+}
+
+.switch input:checked + .switch-slider {
+  background-color: var(--color-info);
+}
+
+.switch input:checked + .switch-slider::before {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch-slider {
+  outline: 2px solid var(--color-info);
+  outline-offset: 2px;
+}
+
 .cards-grid-wide {
   grid-template-columns: repeat(2, 1fr);
 }
@@ -540,15 +662,17 @@
   white-space: nowrap;
 }
 
-/* Testata tinta per card proposte (colore di stato) */
+/* Testata tinta per card proposte: pattern "partecipazioni" (stato a sinistra) */
 .prop-head {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
 }
 
 .prop-head-title {
@@ -574,27 +698,29 @@
 
 .prop-head-warning {
   background-color: var(--color-warning-light);
+  color: var(--color-warning);
 }
 
 .prop-head-success {
   background-color: var(--color-success-light);
+  color: var(--color-success);
 }
 
 .prop-head-neutral {
   background-color: var(--gray-100);
+  color: var(--gray-600);
 }
 
 .prop-head-danger {
   background-color: var(--color-error-light);
+  color: var(--color-error);
 }
 
-/* Slot fissi: righe sempre presenti per card di pari altezza */
+/* Slot descrizione: altezza naturale, la card cresce col testo */
 .prop-slot-desc {
   display: block;
-  overflow: hidden;
-  min-height: 25px;
-  height: 25px;
-  line-height: 1.3;
+  margin-bottom: var(--space-1);
+  line-height: 1.4;
 }
 
 .prop-slot-link {
@@ -603,8 +729,18 @@
   line-height: 1.3;
 }
 
-.prop-slot-motivo {
-  min-height: 38px;
+/* Riga motivo: normale riga di flusso sotto la barra avanzamento */
+.prop-motivo-row {
+  margin-top: 8px;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  font-size: var(--text-xs);
+  background: var(--color-bg);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+/* Link campagna in fondo alla card */
+.prop-campaign-link {
+  padding: var(--space-2) var(--space-4) var(--space-3);
 }
 
 /* Thumb fissa quadrata nelle card proposte (proporzionata, in alto) */
@@ -1531,8 +1667,35 @@
 }
 
 /* Stat card dashboard: ombra morbida uniforme */
-.dashboard-grid .card {
+.dashboard-grid .card,
+.fornitore-grid .card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Grid Area Fornitore: 3 colonne sotto "Richiede attenzione" */
+.fornitore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* Righe Area Fornitore (ordini / notifiche / proposte): link sul nome */
+.fornitore-row-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Ordine evidenziato via ?evidenzia={id} */
+.ordine-riga.ordine-evidenziato {
+  background-color: var(--color-warning-light);
+  border-radius: var(--radius-md);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
 }
 
 /* Sezione "Richiede attenzione": warning pallido + bordo sinistro spesso */

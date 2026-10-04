@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiDelete } from '../api.js';
+import { isFornitore } from '../auth.js';
 import { Card } from '../components/card.js';
 
 let recVoto = 0;
@@ -25,31 +26,44 @@ export async function FornitoriDettaglioPage(params) {
   content.innerHTML = '<div class="content-area"><div class="loading-spinner">Caricamento...</div></div>';
 
   try {
-    const [fornRes, prodRes, recRes] = await Promise.all([
+    const [fornRes, prodRes, recRes, campRes] = await Promise.all([
       apiGet('/fornitori'),
       apiGet(`/prodotti?fornitore_id=${params.id}`),
-      apiGet(`/fornitori/${params.id}/recensioni`).catch(() => ({ dati: null }))
+      apiGet(`/fornitori/${params.id}/recensioni`).catch(() => ({ dati: null })),
+      apiGet('/campagne').catch(() => ({ dati: [] }))
     ]);
     const recDati = recRes.dati || { media: null, totale: 0, mia: null, puo_recensire: false, recensioni: [] };
     recVoto = (recDati.mia && recDati.mia.voto) || 0;
     const fornitori = fornRes.dati || [];
     const fornitore = fornitori.find(f => f.id === parseInt(params.id));
     const prodotti = ((prodRes.dati && prodRes.dati.prodotti) || prodRes.dati || []).filter(p => p.id_fornitore === parseInt(params.id));
+    const ultimaCampagnaPerProdotto = {};
+    ((campRes && campRes.dati) || []).forEach(c => {
+      const pid = parseInt(c.id_prodotto);
+      if (!pid) return;
+      if (!ultimaCampagnaPerProdotto[pid] || parseInt(c.id) > ultimaCampagnaPerProdotto[pid]) {
+        ultimaCampagnaPerProdotto[pid] = parseInt(c.id);
+      }
+    });
 
     if (!fornitore) {
-      content.innerHTML = '<div class="empty-state"><h2>Fornitore non trovato</h2><a href="#/" class="btn btn-default">Torna alle campagne</a></div>';
+      const backHref = isFornitore() ? '#/fornitore/campagne' : '#/';
+      content.innerHTML = `<div class="empty-state"><h2>Fornitore non trovato</h2><a href="${backHref}" class="btn btn-default">Torna alle campagne</a></div>`;
       return;
     }
 
-    const productsHtml = prodotti.map(p => `
-      <div style="display: flex; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border);">
+    const productsHtml = prodotti.map(p => {
+      const campId = ultimaCampagnaPerProdotto[parseInt(p.id)];
+      const inner = `
         <div>
-          <div class="font-medium">${p.nome}</div>
-          <div class="text-sm text-secondary">Obiettivo: ${p.quantita_minima} pezzi</div>
+          <div class="font-medium"${campId ? ' style="color:var(--color-primary);"' : ''}>${p.nome}</div>
+          <div class="text-sm text-secondary">Minimo: ${p.quantita_minima} pezzi</div>
         </div>
-        <div class="font-bold">&euro;${parseFloat(p.prezzo_unitario).toFixed(2)}</div>
-      </div>
-    `).join('') || '<p class="text-secondary">Nessun prodotto disponibile</p>';
+        <div class="font-bold">&euro;${parseFloat(p.prezzo_unitario).toFixed(2)}</div>`;
+      return campId
+        ? `<a href="#/campagne/${campId}" style="display:flex;justify-content:space-between;padding:var(--space-3) 0;border-bottom:1px solid var(--color-border);text-decoration:none;color:inherit;" title="Vedi campagna">${inner}</a>`
+        : `<div style="display: flex; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border);">${inner}</div>`;
+    }).join('') || '<p class="text-secondary">Nessun prodotto disponibile</p>';
 
     const recensioniHtml = (recDati.recensioni || []).map(r => `
       <div style="padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border);">
@@ -80,7 +94,7 @@ export async function FornitoriDettaglioPage(params) {
     content.innerHTML = `
       <div class="content-area">
         <div style="margin-bottom: var(--space-4);">
-          <a href="#/" class="btn btn-ghost btn-sm">
+          <a href="${isFornitore() ? '#/fornitore/campagne' : '#/'}" class="btn btn-ghost btn-sm">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             Torna alle campagne
           </a>

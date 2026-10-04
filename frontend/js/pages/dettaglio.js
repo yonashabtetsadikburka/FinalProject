@@ -1,5 +1,5 @@
 import { getState } from '../state.js';
-import { isAuthenticated } from '../auth.js';
+import { isAuthenticated, isFornitore } from '../auth.js';
 import { apiGet, apiPost, apiDelete } from '../api.js';
 import { API_URL, ACCONTO_PERCENT } from '../constants.js';
 import { Progress } from '../components/progress.js';
@@ -218,8 +218,9 @@ function renderDettaglio() {
   if (!content) return;
 
   const c = currentCampagna;
+  const backHref = isFornitore() ? '#/fornitore/campagne' : '#/';
   if (!c) {
-    content.innerHTML = '<div class="empty-state"><h2>Campagna non trovata</h2><a href="#/" class="btn btn-default">Torna alle campagne</a></div>';
+    content.innerHTML = `<div class="empty-state"><h2>Campagna non trovata</h2><a href="${backHref}" class="btn btn-default">Torna alle campagne</a></div>`;
     return;
   }
 
@@ -281,7 +282,7 @@ function renderDettaglio() {
   content.innerHTML = `
     <div class="content-area">
       <div style="margin-bottom: var(--space-4);">
-        <a href="#/" class="btn btn-ghost btn-sm">
+        <a href="${backHref}" class="btn btn-ghost btn-sm">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
           Torna alle campagne
         </a>
@@ -793,6 +794,7 @@ export async function DettaglioPage(params) {
       }
     } catch (_) {}
   } catch (err) {
-    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p><a href="#/" class="btn btn-default">Torna alle campagne</a></div></div>`;
+    const backHref = isFornitore() ? '#/fornitore/campagne' : '#/';
+    content.innerHTML = `<div class="content-area"><div class="empty-state"><h2>Errore</h2><p class="text-secondary">${err.message}</p><a href="${backHref}" class="btn btn-default">Torna alle campagne</a></div></div>`;
   }
 }
