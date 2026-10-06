@@ -419,7 +419,9 @@ function fornitore_proposte_mie(): void
     $st = db()->prepare(
         'SELECT pp.*,
                 (SELECT COUNT(*) FROM voti_proposte WHERE id_proposta = pp.id_proposta AND valore_voto = \'favore\') AS voti_favore,
-                (SELECT COUNT(*) FROM voti_proposte WHERE id_proposta = pp.id_proposta AND valore_voto = \'contrario\') AS voti_contrari
+                (SELECT COUNT(*) FROM voti_proposte WHERE id_proposta = pp.id_proposta AND valore_voto = \'contrario\') AS voti_contrari,
+                (SELECT c.id FROM prodotti pr JOIN collette c ON c.id_prodotto = pr.id
+                  WHERE pr.id_proposta_origine = pp.id_proposta ORDER BY c.id ASC LIMIT 1) AS campagna_id
            FROM proposte_prodotti pp
           WHERE pp.proponente_id = ? AND pp.proponente_tipo = \'fornitore\'
              OR pp.id_fornitore_suggerito = ?
@@ -441,6 +443,7 @@ function fornitore_proposte_mie(): void
 
     foreach ($out as &$p) {
         $p['id_proposta'] = (int)$p['id_proposta'];
+        $p['campagna_id'] = $p['campagna_id'] !== null ? (int)$p['campagna_id'] : null;
         $p['voti_favore'] = (int)$p['voti_favore'];
         $p['voti_contrari'] = (int)$p['voti_contrari'];
         $p['moq_richiesto'] = $p['moq_richiesto'] !== null ? (int)$p['moq_richiesto'] : null;

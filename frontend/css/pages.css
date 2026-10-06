@@ -182,6 +182,21 @@
   align-items: start;
 }
 
+/* Layout pagina Proposte fornitore: form 60% + lista 40% */
+.proposte-layout {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* Lista proposte in colonna destra: stack verticale 1 colonna */
+.proposte-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 /* Griglia "Le mie campagne" fornitore: 2-3 colonne desktop, 1 su mobile */
 .camp-forn-grid {
   display: grid;
@@ -245,6 +260,44 @@
 
 .camp-f-fill.raggiunto {
   background: var(--color-success);
+}
+
+/* Header card ordine fornitore, tinto per stato (pattern part-head) */
+.ord-f-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.ord-f-head .text-xs {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.ord-f-in_preparazione {
+  background-color: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.ord-f-evaso {
+  background-color: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.ord-f-consegnato {
+  background-color: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.ord-f-neutro {
+  background-color: var(--gray-100);
+  color: var(--gray-600);
 }
 
 /* Toggle switch reale (es. "Solo miei prodotti") */
@@ -1668,8 +1721,45 @@
 
 /* Stat card dashboard: ombra morbida uniforme */
 .dashboard-grid .card,
-.fornitore-grid .card {
+.fornitore-grid .card,
+.fornitore-form-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Zona upload proposta fornitore: tratteggiata, click o drag&drop */
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-6) var(--space-4);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.upload-dropzone-text {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.upload-thumb img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 /* Grid Area Fornitore: 3 colonne sotto "Richiede attenzione" */

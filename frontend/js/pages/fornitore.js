@@ -176,6 +176,83 @@ window.campFornToggleMiei = async function(input) {
   renderCampFornGrid();
 };
 
+/* --- "Ordini ricevuti": card, azione esplicita per stato, filtri --- */
+let ordFornQ = '';
+let ordFornStato = '';
+
+/** Header card: in_preparazione → warning, evaso → info (accent), consegnato → success. */
+const ORD_F_HEAD = {
+  in_preparazione: 'in_preparazione',
+  evaso: 'evaso',
+  consegnato: 'consegnato'
+};
+
+/** Bottone d'azione esplicito per stato. Solo questi 3 stati avanzano lato fornitore
+ *  (inviato → ricevuto → in_preparazione → evaso via POST /fornitore/ordini/{id}/avanza);
+ *  su evaso/consegnato/altri nessun bottone: l'azione successiva spetta al cliente o all'admin. */
+function azioneOrdineFornitore(o) {
+  if (o.stato === 'inviato') {
+    return `<button class="btn btn-default w-full" onclick="fornitoreAvanzaOrdine(${o.id}, 'Ordine ricevuto')">Prendi in carico</button>`;
+  }
+  if (o.stato === 'ricevuto') {
+    return `<button class="btn btn-default w-full" onclick="fornitoreAvanzaOrdine(${o.id}, 'In preparazione')">Metti in preparazione</button>`;
+  }
+  if (o.stato === 'in_preparazione') {
+    return `<button class="btn btn-default w-full" onclick="fornitoreAvanzaOrdine(${o.id}, 'Ordine evaso')">Segna come evaso</button>`;
+  }
+  return '';
+}
+
+function ordineCardFornitore(o, evidenziaId) {
+  const headKey = ORD_F_HEAD[o.stato] || 'neutro';
+  const headLabel = STATI_ORD[o.stato] || o.stato;
+  const ev = String(evidenziaId) === String(o.id) ? ' ordine-evidenziato' : '';
+  const nomeEsc = (o.prodotto || 'Prodotto').replace(/"/g, '&quot;');
+  const azione = azioneOrdineFornitore(o);
+  return `
+    <div id="ordine-${o.id}" class="card card-elevate ordine-riga${ev}">
+      <div class="ord-f-head ord-f-${headKey}">
+        <span class="order-status-label">${headLabel}</span>
+      </div>
+      <div class="card-content">
+        <a href="#/campagne/${o.id_colletta}" class="order-product-name" title="${nomeEsc}">${o.prodotto || 'Prodotto'}</a>
+        <div class="text-xs text-secondary" style="margin-top:var(--space-1);">${o.quantita_ordinata} pezzi &middot; ${eurIt(o.importo_totale)}</div>
+        ${azione ? `<div style="margin-top:var(--space-3);">${azione}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderOrdFornGrid() {
+  const grid = document.getElementById('ord-forn-grid');
+  if (!grid || !fData) return;
+  const evidenziaId = getEvidenziaId();
+  const q = (ordFornQ || '').toLowerCase();
+  const filtrati = (fData.ordini || []).filter(o =>
+    ((o.prodotto || '').toLowerCase().includes(q)) &&
+    (ordFornStato === '' || o.stato === ordFornStato));
+  const countEl = document.getElementById('ord-forn-count');
+  if (countEl) countEl.textContent = `${filtrati.length} ${filtrati.length === 1 ? 'ordine' : 'ordini'}`;
+  grid.innerHTML = filtrati.length > 0
+    ? filtrati.map(o => ordineCardFornitore(o, evidenziaId)).join('')
+    : `<div class="empty-state"><p class="text-secondary">Nessun ordine trovato.</p>${(q || ordFornStato) ? '<button class="btn btn-ghost btn-sm" style="margin-top:var(--space-2);" onclick="ordFornReset()">Reset filtri</button>' : ''}</div>`;
+}
+
+window.ordFornFiltra = function() {
+  ordFornQ = document.getElementById('search-ord-forn')?.value || '';
+  ordFornStato = document.getElementById('filtro-stato-ord-forn')?.value || '';
+  renderOrdFornGrid();
+};
+
+window.ordFornReset = function() {
+  const q = document.getElementById('search-ord-forn');
+  if (q) q.value = '';
+  const fs = document.getElementById('filtro-stato-ord-forn');
+  if (fs) fs.value = '';
+  ordFornQ = '';
+  ordFornStato = '';
+  renderOrdFornGrid();
+};
+
 function titoloSezione(sezione, nomeAzienda) {
   const titoli = {
     area: ['Area Fornitore', nomeAzienda],
@@ -203,19 +280,65 @@ window.fornitoreAnteprimaFoto = function(input) {
   const file = input.files[0];
   const nome = document.getElementById('prop-foto-nome');
   const rimuovi = document.getElementById('prop-foto-rimuovi');
+  const thumb = document.getElementById('prop-foto-thumb');
   if (!file) return;
   if (nome) nome.textContent = file.name;
   if (rimuovi) rimuovi.style.display = 'inline-block';
+  if (thumb) {
+    if (thumb.dataset.url) URL.revokeObjectURL(thumb.dataset.url);
+    const url = URL.createObjectURL(file);
+    thumb.dataset.url = url;
+    thumb.innerHTML = `<img src="${url}" alt="Anteprima" />`;
+    thumb.style.display = 'block';
+  }
+  document.querySelector('.upload-dropzone')?.classList.add('has-file');
 };
 
 window.fornitoreRimuoviFoto = function() {
   const input = document.getElementById('prop-foto-input');
   const nome = document.getElementById('prop-foto-nome');
   const rimuovi = document.getElementById('prop-foto-rimuovi');
+  const thumb = document.getElementById('prop-foto-thumb');
   if (input) input.value = '';
   if (nome) nome.textContent = 'Nessun file selezionato';
   if (rimuovi) rimuovi.style.display = 'none';
+  if (thumb) {
+    if (thumb.dataset.url) URL.revokeObjectURL(thumb.dataset.url);
+    delete thumb.dataset.url;
+    thumb.innerHTML = '';
+    thumb.style.display = 'none';
+  }
+  document.querySelector('.upload-dropzone')?.classList.remove('has-file');
 };
+
+window.fornitoreDropzoneDrag = function(event) {
+  event.preventDefault();
+  event.currentTarget.classList.add('dragover');
+};
+
+window.fornitoreDropzoneLeave = function(event) {
+  event.currentTarget.classList.remove('dragover');
+};
+
+window.fornitoreDropzoneDrop = function(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('dragover');
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  const input = document.getElementById('prop-foto-input');
+  if (!input) return;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  fornitoreAnteprimaFoto(input);
+};
+
+/** Prezzo in formato italiano (€19,99): solo display card proposte fornitore. */
+function eurIt(v) {
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return '—';
+  return '€' + n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 window.fornitoreInviaProposta = async function(e) {
   e.preventDefault();
@@ -261,21 +384,28 @@ window.fornitoreAvanzaOrdine = async function(ordineId, azione) {
 };
 
 function propostaCard(p) {
-  const bv = p.stato === 'rifiutata' || p.stato === 'respinta_votazione' ? 'destructive'
+  const tone = (p.stato === 'rifiutata' || p.stato === 'respinta_votazione') ? 'danger'
     : (p.stato === 'approvata_admin' || p.stato === 'pubblicata') ? 'success'
-    : p.stato === 'in_votazione' ? 'default' : 'warning';
+    : (p.stato === 'in_votazione' || p.stato === 'in_attesa') ? 'warning' : 'neutral';
+  const idCampagna = parseInt(p.campagna_id) || 0;
+  const linkabile = (p.stato === 'pubblicata' || p.stato === 'approvata_admin') && idCampagna > 0;
+  const nomeEsc = (p.nome_prodotto || 'Prodotto').replace(/"/g, '&quot;');
+  const prezzoTxt = p.prezzo_base
+    ? eurIt(p.prezzo_base) + (p.prezzo_corrente && p.prezzo_corrente !== p.prezzo_base ? ` → ${eurIt(p.prezzo_corrente)}` : '')
+    : '';
   return `
-  <div class="card" style="margin-bottom:var(--space-2);">
-    <div class="card-content">
-      <div style="display:flex;justify-content:space-between;align-items:start;">
-        <div>
-          <div class="font-medium">${p.nome_prodotto}</div>
-          <div class="text-xs text-secondary">${p.voti_favore || 0} favorevoli${p.moq_richiesto ? ` &middot; MOQ ${p.moq_richiesto}` : ''}${p.prezzo_base ? ` &middot; &euro;${parseFloat(p.prezzo_base).toFixed(2)}${p.prezzo_corrente && p.prezzo_corrente !== p.prezzo_base ? ` → &euro;${parseFloat(p.prezzo_corrente).toFixed(2)}` : ''}` : ''}</div>
-          ${p.motivo ? `<div class="text-xs" style="margin-top:4px;">Motivo: ${p.motivo}</div>` : ''}
-        </div>
-        ${Badge({ variant: bv, children: STATI_PROP[p.stato] || p.stato })}
-      </div>
+  <div class="card card-elevate">
+    <div class="prop-head prop-head-${tone}">
+      <span class="order-status-label">${STATI_PROP[p.stato] || p.stato}</span>
     </div>
+    <div class="card-content">
+      ${linkabile
+        ? `<a href="#/campagne/${idCampagna}" class="order-product-name" title="${nomeEsc}">${p.nome_prodotto}</a>`
+        : `<div class="font-medium text-sm">${p.nome_prodotto}</div>`}
+      <div class="text-xs text-secondary" style="margin-top:var(--space-1);">${p.voti_favore || 0} favorevoli${p.moq_richiesto ? ` &middot; MOQ ${p.moq_richiesto}` : ''}${prezzoTxt ? ` &middot; ${prezzoTxt}` : ''}</div>
+    </div>
+    ${p.motivo ? `<div class="prop-motivo-row">Motivo: ${p.motivo}</div>` : ''}
+    ${linkabile ? `<div class="prop-campaign-link"><a href="#/campagne/${idCampagna}" class="btn btn-ghost btn-sm w-full">Vedi campagna &rarr;</a></div>` : ''}
   </div>`;
 }
 
@@ -313,22 +443,34 @@ function renderFornitoreSezione(sezione) {
       <div class="text-sm text-secondary" id="camp-forn-count" style="margin-bottom:var(--space-3);"></div>
       <div class="camp-forn-grid" id="camp-forn-grid"></div>`;
   } else if (sezione === 'proposte') {
-    const lista = proposte.length > 0 ? proposte.map(propostaCard).join('') : '<p class="text-sm text-secondary">Nessuna proposta ancora.</p>';
+    const lista = proposte.length > 0 ? `<div class="proposte-list">${proposte.map(propostaCard).join('')}</div>` : '<p class="text-sm text-secondary">Nessuna proposta ancora.</p>';
     html = `
-      ${Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-3);">Proponi prodotto</h3>
+      <div class="proposte-layout">
+      ${Card({ class: 'fornitore-form-card', children: `<div class="card-content"><h3 style="margin-bottom:var(--space-3);">Proponi prodotto</h3>
         <div id="prop-error" style="color:var(--color-error);font-size:var(--text-sm);display:none;margin-bottom:var(--space-2);"></div>
         <form onsubmit="fornitoreInviaProposta(event)" style="display:flex;flex-direction:column;gap:var(--space-2);">
           <input type="text" name="nome_prodotto" class="input" placeholder="Nome prodotto* (max 80 caratteri)" maxlength="80" required />
           <textarea name="descrizione" class="input" placeholder="Descrizione" rows="2"></textarea>
           <div style="display:flex;gap:var(--space-2);">
-            <input type="number" name="moq_richiesto" class="input" placeholder="MOQ*" min="1" required style="flex:1;" />
-            <input type="number" name="prezzo_base" class="input" placeholder="Prezzo base &euro;*" min="0.01" step="0.01" required style="flex:1;" />
+            <div style="flex:1;">
+              <input type="number" name="moq_richiesto" class="input" placeholder="MOQ*" min="1" required style="width:100%;" />
+              <div class="text-xs text-secondary" style="margin-top:4px;">Quantità minima richiesta per attivare la campagna</div>
+            </div>
+            <div style="flex:1;">
+              <input type="number" name="prezzo_base" class="input" placeholder="Prezzo base &euro;*" min="0.01" step="0.01" required style="width:100%;" />
+              <div class="text-xs text-secondary" style="margin-top:4px;">Prezzo al pezzo sotto il MOQ</div>
+            </div>
             <input type="number" name="prezzo_corrente" class="input" placeholder="Prezzo attuale &euro;" min="0.01" step="0.01" style="flex:1;" />
           </div>
-          <label class="btn btn-outline btn-sm" for="prop-foto-input" style="cursor:pointer;">Scegli immagine</label>
-          <input type="file" id="prop-foto-input" name="foto" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="fornitoreAnteprimaFoto(this)" />
-          <span id="prop-foto-nome" class="text-xs text-secondary" style="margin-left:var(--space-2);">Nessun file selezionato</span>
-          <button type="button" id="prop-foto-rimuovi" class="btn btn-ghost btn-sm" style="display:none;margin-left:var(--space-1);" onclick="fornitoreRimuoviFoto()">&#10005;</button>
+          <label class="upload-dropzone" ondragover="fornitoreDropzoneDrag(event)" ondragleave="fornitoreDropzoneLeave(event)" ondrop="fornitoreDropzoneDrop(event)">
+            <input type="file" id="prop-foto-input" name="foto" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="fornitoreAnteprimaFoto(this)" />
+            <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span class="upload-dropzone-text">Trascina un'immagine o clicca per selezionarla</span>
+            <span class="text-xs text-secondary">JPG, PNG, WebP &middot; max 5MB</span>
+            <span id="prop-foto-thumb" class="upload-thumb" style="display:none;"></span>
+            <span id="prop-foto-nome" class="text-xs text-secondary">Nessun file selezionato</span>
+          </label>
+          <button type="button" id="prop-foto-rimuovi" class="btn btn-ghost btn-sm" style="display:none;align-self:flex-start;" onclick="fornitoreRimuoviFoto()">&#10005; Rimuovi immagine</button>
           <div>
             <div class="text-xs text-secondary" style="margin-bottom:4px;">Prezzi a scaglioni (opzionali)</div>
             <div id="scaglioni-wrap"></div>
@@ -337,30 +479,28 @@ function renderFornitoreSezione(sezione) {
           <button type="submit" class="btn btn-default">Invia proposta</button>
         </form>
       </div>` })}
-      <div style="margin-top:var(--space-3);">
-        ${Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-2);">Le mie proposte</h3>${lista}</div>` })}
+      <div>
+        <h3 style="margin-bottom:var(--space-2);">Le mie proposte</h3>${lista}
+      </div>
       </div>`;
   } else if (sezione === 'ordini') {
-    const evidenziaId = getEvidenziaId();
-    const righe = ordini.length > 0 ? ordini.map(o => {
-      const azione = o.stato === 'inviato'
-        ? `<button class="btn btn-default btn-sm" onclick="fornitoreAvanzaOrdine(${o.id}, 'Ordine ricevuto')">Ordine ricevuto</button>`
-        : o.stato === 'ricevuto'
-          ? `<button class="btn btn-default btn-sm" onclick="fornitoreAvanzaOrdine(${o.id}, 'In preparazione')">In preparazione</button>`
-          : o.stato === 'in_preparazione'
-            ? `<button class="btn btn-default btn-sm" onclick="fornitoreAvanzaOrdine(${o.id}, 'Ordine evaso')">Ordine evaso</button>` : '';
-      const ev = String(evidenziaId) === String(o.id) ? ' ordine-evidenziato' : '';
-      return `
-      <div id="ordine-${o.id}" class="ordine-riga${ev}" style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);padding:var(--space-2) 0;border-bottom:1px solid var(--color-border);">
-        <div style="min-width:0;">
-          <div class="text-sm font-medium">${o.prodotto} — ${o.quantita_ordinata} pezzi</div>
-          <div class="text-xs text-secondary" style="margin:2px 0 6px;">&euro;${o.importo_totale.toFixed(2)}</div>
-          ${badgeOrdineFornitore(o.stato)}
+    const qEsc = String(ordFornQ || '').replace(/"/g, '&quot;');
+    const optSel = (v) => ordFornStato === v ? ' selected' : '';
+    html = `
+      <div class="search-filter-bar">
+        <div class="search-input-wrapper" style="flex:1;">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="search" autocomplete="off" aria-label="Cerca ordini" class="input" placeholder="Cerca per prodotto..." id="search-ord-forn" value="${qEsc}" oninput="ordFornFiltra()">
         </div>
-        ${azione}
-      </div>`;
-    }).join('') : '<p class="text-sm text-secondary">Nessun ordine ricevuto.</p>';
-    html = Card({ children: `<div class="card-content"><h3 style="margin-bottom:var(--space-2);">Ordini ricevuti</h3>${righe}</div>` });
+        <select id="filtro-stato-ord-forn" class="input" style="max-width:220px;" aria-label="Stato ordine" onchange="ordFornFiltra()">
+          <option value=""${optSel('')}>Tutti gli stati</option>
+          <option value="in_preparazione"${optSel('in_preparazione')}>In preparazione</option>
+          <option value="evaso"${optSel('evaso')}>Evaso</option>
+          <option value="consegnato"${optSel('consegnato')}>Consegnato</option>
+        </select>
+      </div>
+      <div class="text-sm text-secondary" id="ord-forn-count" style="margin-bottom:var(--space-3);"></div>
+      <div class="cards-grid" id="ord-forn-grid"></div>`;
   } else {
     // Area Fornitore (dashboard generale)
   const moqRaggiunti = campagne.filter(c => c.stato === 'riuscita');
@@ -452,6 +592,7 @@ function renderFornitoreSezione(sezione) {
   }
 
   if (sezione === 'ordini') {
+    renderOrdFornGrid();
     const evId = getEvidenziaId();
     if (evId) {
       const target = document.getElementById(`ordine-${evId}`);

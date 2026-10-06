@@ -57,6 +57,10 @@
     grid-template-columns: 1fr;
   }
 
+  .proposte-layout {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-grid {
     grid-template-columns: repeat(2, 1fr);
   }
