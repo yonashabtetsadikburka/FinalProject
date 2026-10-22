@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BuyPool — Presentazione progetto</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <style>
+    .reveal { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .reveal h1, .reveal h2 { color: #2563eb; font-weight: 700; }
+    .reveal h3 { color: #1e40af; }
+    .reveal section { text-align: left; font-size: 0.72em; }
+    .reveal .title-slide { text-align: center; }
+    .reveal .title-slide h1 { font-size: 1.6em; }
+    .reveal .title-slide p { color: #475569; }
+    .reveal table { font-size: 0.72em; margin: 0.4em auto; }
+    .reveal table th { background: #eff6ff; color: #1e3a8a; }
+    .reveal ul { line-height: 1.45; }
+    .reveal .accent { color: #2563eb; font-weight: 600; }
+    .reveal .small { font-size: 0.8em; color: #64748b; }
+    .reveal .columns { display: flex; gap: 1em; }
+    .reveal .columns > div { flex: 1; }
+    .reveal .kpi { display: flex; gap: 0.6em; flex-wrap: wrap; justify-content: center; }
+    .reveal .kpi .box { background: #f1f5f9; border-radius: 10px; padding: 0.5em 0.8em; text-align: center; min-width: 7.5em; }
+    .reveal .kpi .num { font-size: 1.5em; font-weight: 700; color: #2563eb; display: block; }
+    .reveal .footer-note { position: absolute; bottom: 0.2em; left: 0; right: 0; text-align: center; font-size: 0.55em; color: #94a3b8; }
+    .reveal .mermaid { text-align: center; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- 1. Titolo -->
+<section class="title-slide">
+  <h1>BuyPool</h1>
+  <h3>Piattaforma di acquisto collettivo</h3>
+  <p>Presentazione progetto — corso di studi</p>
+  <p class="small">PHP 8.3 · MySQL · Vanilla JS SPA · Stripe · Google OAuth</p>
+</section>
+
+<!-- 2. Problema -->
+<section>
+  <h2>Il problema</h2>
+  <ul>
+    <li>L'<span class="accent">acquisto collettivo</span> abbassa i prezzi, ma nella pratica è caos:</li>
+    <li style="margin-left:1.4em">chat di gruppo, fogli Excel, incassi a mano</li>
+    <li style="margin-left:1.4em">nessuna garanzia se il minimo non viene raggiunto</li>
+    <li style="margin-left:1.4em">ritiri e consegne disordinati</li>
+    <li style="margin-top:0.6em">BuyPool digitalizza <span class="accent">l'intero ciclo</span>: proposta → votazione → campagna → pagamento → ritiro QR → recensioni.</li>
+  </ul>
+</section>
+
+<!-- 3. La soluzione -->
+<section>
+  <h2>La soluzione</h2>
+  <p>Web application di group buying con <span class="accent">prezzi a scaglioni</span>: più adesioni, più scende il prezzo unitario.</p>
+  <div class="columns">
+    <div>
+      <h3>Per i clienti</h3>
+      <ul>
+        <li>Prezzi più bassi in gruppo</li>
+        <li>Rimborso automatico se il gruppo fallisce</li>
+        <li>Ritiro con QR o spedizione</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Per i fornitori</h3>
+      <ul>
+        <li>Domanda aggregata e prevedibile</li>
+        <li>Vendita in blocco al MOQ</li>
+        <li>Area self-service</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Per la piattaforma</h3>
+      <ul>
+        <li>Commissione su ogni campagna</li>
+        <li>Dati di domanda reali</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Tre ruoli -->
+<section>
+  <h2>Tre ruoli, una piattaforma</h2>
+  <table>
+    <tr><th>Ruolo</th><th>Funzioni principali</th></tr>
+    <tr><td><b>Cliente</b></td><td>Sfoglia i gruppi, aderisce pagando un acconto 20%, paga il saldo a gruppo confermato, ritira con QR o riceve a domicilio, recensisce, propone prodotti</td></tr>
+    <tr><td><b>Fornitore</b></td><td>Propone prodotti (foto + scaglioni), monitora le campagne, evado gli ordini in 3 passi</td></tr>
+    <tr><td><b>Admin</b></td><td>Approva le proposte, conferma i gruppi, invia gli ordini, gestisce spedizioni e ritiri (scan QR), utenti e notifiche</td></tr>
+  </table>
+  <p class="small">Autorizzazioni sempre valutate lato server.</p>
+</section>
+
+<!-- 5. Ciclo di vita -->
+<section>
+  <h2>Il ciclo di vita di un gruppo</h2>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor C as Cliente
+    actor Adm as Admin
+    participant P as Piattaforma
+    actor F as Fornitore
+    C->>P: Unisciti al gruppo (acconto 20% via Stripe)
+    P->>P: Il prezzo scende con la quantità
+    P->>C: MOQ raggiunto → notifica a tutti
+    Adm->>P: Conferma il gruppo
+    C->>P: Paga il saldo (ritiro o spedizione)
+    Adm->>F: Invia l'ordine aggregato
+    F->>P: Avanza lo stato fino a evaso
+    Adm->>C: Consegna con QR o spedizione
+  </div>
+</section>
+
+<!-- 6. Funzioni distintive -->
+<section>
+  <h2>Funzioni distintive</h2>
+  <ul>
+    <li><span class="accent">Prezzi a scaglioni</span> — tutti pagano il prezzo del livello raggiunto</li>
+    <li><span class="accent">Acconto 20% + saldo</span> — impegno minimo, zero rischi (rimborso automatico)</li>
+    <li><span class="accent">Votazione delle proposte</span> — la community decide; superata la soglia la campagna nasce da sola</li>
+    <li><span class="accent">Ritiro con QR code</span> — token monouso generato al saldo, scansione in sede dall'admin</li>
+    <li><span class="accent">Wallet &amp; rimborsi</span> — rimborsi Stripe automatici con notifica</li>
+    <li><span class="accent">Recensioni</span> — solo chi ha realmente acquistato</li>
+    <li><span class="accent">GDPR</span> — export dati e cancellazione integrati</li>
+  </ul>
+</section>
+
+<!-- 7. Stati -->
+<section>
+  <h2>Stati semplici per l'utente</h2>
+  <div class="columns">
+    <div>
+      <h3>Gruppo</h3>
+      <ul>
+        <li>In corso → Riuscito</li>
+        <li>Ordine confermato → Ordine al fornitore</li>
+        <li>Consegnata</li>
+        <li>Fallita / Annullata (rimborso)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Adesione</h3>
+      <ul>
+        <li>In Attesa (acconto pagato)</li>
+        <li>Da Pagare → Pagata</li>
+        <li>Azione richiesta (48h per riprovare)</li>
+        <li>Annullata / Rimborsata</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small">Macchina a stati completa documentata in docs/tech/04-modello-dati.md</p>
+</section>
+
+<!-- 8. Architettura -->
+<section>
+  <h2>Architettura</h2>
+  <div class="mermaid">
+flowchart TB
+    subgraph Client["Browser — SPA vanilla JS"]
+        JS["index.html / app.html<br/>routing hash · moduli ES6"]
+    end
+    subgraph Server["Backend PHP 8.3"]
+        FC["index.php — front controller<br/>98 rotte REST"]
+        LIB["lib: auth · pagamenti · mail · immagini"]
+    end
+    DB[(MySQL — 23 tabelle)]
+    subgraph Ext["Esterni"]
+        STR[Stripe]
+        GOO[Google OAuth]
+        SMTP[SMTP email]
+    end
+    CRON["Cron orario"]
+    JS -- "fetch + cookie sessione" --> FC
+    FC --> DB
+    FC --> STR
+    FC --> GOO
+    LIB --> SMTP
+    CRON --> LIB
+    STR -- "webhook firmato" --> FC
+  </div>
+</section>
+
+<!-- 9. Stack -->
+<section>
+  <h2>Stack tecnologico</h2>
+  <table>
+    <tr><th>Livello</th><th>Tecnologia</th><th>Scelta</th></tr>
+    <tr><td>Frontend</td><td>HTML5, CSS3, JS ES6 (moduli)</td><td>Nessun framework/bundler: semplicità e controllo</td></tr>
+    <tr><td>Backend</td><td>PHP 8.3, front controller custom</td><td>Router REST puro, zero dipendenze di scaffolding</td></tr>
+    <tr><td>Database</td><td>MySQL (InnoDB, utf8mb4)</td><td>23 tabelle, FK con CASCADE, indici dedicati</td></tr>
+    <tr><td>Pagamenti</td><td>Stripe Checkout + Webhook</td><td>Fonte di verità = webhook firmato + idempotente</td></tr>
+    <tr><td>Login</td><td>Sessioni PHP + Google (MS in preparazione)</td><td>Stato revocabile lato server</td></tr>
+    <tr><td>Email</td><td>PHPMailer + SMTP (Mailpit in dev)</td><td>Coda idempotente con retry</td></tr>
+  </table>
+</section>
+
+<!-- 10. Pagamenti -->
+<section>
+  <h2>Pagamenti — Stripe</h2>
+  <div class="mermaid">
+flowchart LR
+    A[Acconto 20%<br/>Checkout] -->|webhook| B[Creazione adesione]
+    B --> C{MOQ?}
+    C -->|sì + conferma admin| D[Saldo +<br/>commissione + spedizione]
+    D -->|webhook| E[Pagata → QR / spedizione]
+    C -->|no a scadenza| F[Rimborso acconto<br/>automatico]
+  </div>
+  <ul>
+    <li>Webhook <b>firmato</b> (HMAC) e <b>idempotente</b> (registro eventi)</li>
+    <li>Rimborsi automatici con idempotency key</li>
+    <li>Nessun dato carta memorizzato dalla piattaforma (PCI SAQ-A)</li>
+  </ul>
+</section>
+
+<!-- 11. Proposte -->
+<section>
+  <h2>Dalla proposta alla campagna</h2>
+  <div class="mermaid">
+flowchart LR
+    P[Cliente/Fornitore<br/>propone] --> A[Admin ammette<br/>in votazione]
+    A --> V[Community vota<br/>soglia 5 voti · max 30gg]
+    V -->|soglia raggiunta| PUB[Admin pubblica]
+    PUB --> AUTO[Auto-creazione:<br/>prodotto + campagna +<br/>notifica a tutti]
+    V -->|soglia persa| R[Respinta / scaduta]
+  </div>
+  <p>La domanda reale dei clienti decide cosa viene venduto — <span class="accent">demand-driven</span>.</p>
+</section>
+
+<!-- 12. Sicurezza -->
+<section>
+  <h2>Sicurezza</h2>
+  <ul>
+    <li><b>Sessioni PHP</b> httponly + SameSite=Lax, rigenerate al login</li>
+    <li><b>CSRF</b> via header dedicato (estensione globale pianificata)</li>
+    <li><b>SQL injection</b>: prepared statement PDO ovunque</li>
+    <li><b>Upload immagini</b>: riscrittura totale via GD (niente metadati/payload), .htaccess anti-PHP</li>
+    <li><b>Webhook Stripe</b> firmati + registro di idempotenza</li>
+    <li>Errori PHP mai esposti (solo log)</li>
+    <li>Piano di remediation documentato per il go-live (cookie secure, CSP, rate limit)</li>
+  </ul>
+</section>
+
+<!-- 13. GDPR -->
+<section>
+  <h2>Privacy e GDPR</h2>
+  <ul>
+    <li><b>Accesso/portabilità</b>: export JSON completo dei propri dati</li>
+    <li><b>Cancellazione</b>: richiesta integrata con workflow admin</li>
+    <li><b>Minimizzazione</b>: recensioni con nome + iniziale; dati carta solo su Stripe</li>
+    <li><b>Informativa</b> accettata in registrazione e raggiungibile da app</li>
+    <li><b>Cookie</b>: solo tecnici (sessione) — nessun tracciamento</li>
+  </ul>
+</section>
+
+<!-- 14. Database -->
+<section>
+  <h2>Modello dati</h2>
+  <div class="kpi">
+    <div class="box"><span class="num">23</span>tabelle</div>
+    <div class="box"><span class="num">98</span>endpoint</div>
+    <div class="box"><span class="num">3</span>ruoli</div>
+    <div class="box"><span class="num">7+6</span>stati gruppo/adesione</div>
+  </div>
+  <ul>
+    <li>Ambienti chiave: <code>utenti</code>, <code>collette</code>, <code>prenotazioni</code>, <code>pagamenti</code>, <code>eventi_stripe</code>, <code>qr_codes</code>, <code>email_inviate</code></li>
+    <li>Una adesione per utente per gruppo (UNIQUE), webhook idempotenti, email mai duplicate</li>
+    <li>ER completo e migrazioni in docs/tech/04-modello-dati.md</li>
+  </ul>
+</section>
+
+<!-- 15. Test -->
+<section>
+  <h2>Test e qualità</h2>
+  <div class="kpi">
+    <div class="box"><span class="num">9</span>test PHP puri</div>
+    <div class="box"><span class="num">3</span>test integrazione DB</div>
+    <div class="box"><span class="num">10</span>test Node frontend</div>
+    <div class="box"><span class="num">4</span>checklist manuali</div>
+  </div>
+  <ul>
+    <li>Coperti: formule prezzo/saldo/aumento, stati, upload immagini, idempotenza email, moduli frontend</li>
+    <li>Protocollo di release QA documentato (suite automatiche + checklist + smoke test Stripe)</li>
+  </ul>
+</section>
+
+<!-- 16. Deploy -->
+<section>
+  <h2>Deploy in produzione</h2>
+  <ul>
+    <li>Config centralizzata (<code>config.php</code>: DB, Stripe live, Google, SMTP, cron secret)</li>
+    <li><b>3 cron</b>: saldo scaduto (orario, con retry email) · scadenza proposte · pulizia foto</li>
+    <li>Migrazioni SQL versionate (up/down)</li>
+    <li>Da Mailpit a SMTP reale (es. Brevo) con SPF/DKIM</li>
+    <li>Checklist pre-go-live: HTTPS, CSRF globale, header sicurezza, backup testati</li>
+  </ul>
+  <p class="small">Guide: docs/ops/09-guida-deploy.md e 10-runbook.md</p>
+</section>
+
+<!-- 17. Numeri -->
+<section>
+  <h2>BuyPool in numeri</h2>
+  <div class="kpi">
+    <div class="box"><span class="num">98</span>endpoint REST</div>
+    <div class="box"><span class="num">23</span>tabelle MySQL</div>
+    <div class="box"><span class="num">24</span>route app</div>
+    <div class="box"><span class="num">22</span>suite di test</div>
+    <div class="box"><span class="num">12</span>documenti</div>
+    <div class="box"><span class="num">0</span>framework</div>
+  </div>
+  <p class="small" style="text-align:center">Sceglite consapevoli: controllo totale, stack leggero, nessuna dipendenza non necessaria.</p>
+</section>
+
+<!-- 18. Limiti e roadmap -->
+<section>
+  <h2>Limiti noti e roadmap</h2>
+  <div class="columns">
+    <div>
+      <h3>Oggi</h3>
+      <ul>
+        <li>Login Microsoft in preparazione (JWT da verificare)</li>
+        <li>CSRF da estendere a tutte le scritture</li>
+        <li>Niente CI: test lanciati a mano</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Prossimi passi</h3>
+      <ul>
+        <li>PWA / notifiche push</li>
+        <li>Coupon e fedeltà sul wallet</li>
+        <li>Multi-sede geolocalizzata</li>
+        <li>Analytics per fornitori</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 19. Demo -->
+<section class="title-slide">
+  <h1>Demo live</h1>
+  <p>Flusso cliente: unisciti al gruppo → acconto Stripe → saldo → QR → ritiro</p>
+  <p>Flussi admin e fornitore</p>
+  <p class="small">Ambiente dev: MAMP + Mailpit (email su localhost:8025) + Stripe test</p>
+</section>
+
+<!-- 20. Conclusioni -->
+<section class="title-slide">
+  <h1>Grazie</h1>
+  <p>BuyPool — dall'acquisto collettivo disordinato a una piattaforma governata</p>
+  <p class="small">Documentazione completa: docs/README.md<br/>Codice: repository del progetto</p>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/mermaid/mermaid.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    transition: 'slide',
+    plugins: [ RevealMermaid ],
+    mermaid: { theme: 'neutral', themeVariables: { fontSize: '15px' } }
+  });
+</script>
+</body>
+</html>
